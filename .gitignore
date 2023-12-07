@@ -1,0 +1,5 @@
+#Directory
+.idea
+
+#Environment
+notifier_service/venv
