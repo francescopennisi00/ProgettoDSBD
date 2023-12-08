@@ -51,7 +51,7 @@ try:
             with mysql.connector.connect(host="notifier_DB", user="root", password="toor", database="notifier") as mydb:
                 mycursor = mydb.cursor()
                 mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER, location_id INTEGER, rules VARCHAR(100000), time_stamp TIMESTAMP, sent BOOLEAN)")
-                mycursor.execute("INSERT INTO events VALUES(" + str(userId) +", " + str(location) + ", " + str(violated_rules) + ", CURRENT_TIMESTAMP(), FALSE")
+                mycursor.execute("INSERT INTO events VALUES(" + str(userId) +", " + str(location) + ", " + str(violated_rules) + ", CURRENT_TIMESTAMP(), FALSE)")
 
             #make commit
             try:
@@ -73,15 +73,15 @@ try:
             email_receiver = email
             subject = "Alert notification!"
             body = " messaggio di prova"   #TODO: da modificare con l'elenco delle rules violate
-            em=EmailMessage()
+            em = EmailMessage()
             em['From'] = email_sender
             em['To'] = email_receiver
             em['Subject'] = subject
             em.set_content(body)
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
-                smtp.login(email_sender,email_password)
-                smtp.sendmail(email_sender,email_receiver, em.as_string())
+                smtp.login(email_sender, email_password)
+                smtp.sendmail(email_sender, email_receiver, em.as_string())
                 smtp.close()
 
             #connection with DB and update the entry of the notification sent
