@@ -18,7 +18,7 @@ def commit_completed(err):
 c = Consumer({'bootstrap.servers': 'kafka-1:29092',
               'group.id': 'group1',
               'enable.auto.commit': 'false',
-              'auto.offset.reset': 'earliest',
+              'auto.offset.reset': 'none',  #TODO: ragionarci su se conviene none o latest
               'on_commit': commit_completed
               })
 c.subscribe(['event_to_be_notified'])
