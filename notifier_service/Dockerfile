@@ -1,5 +1,13 @@
-FROM mysql:5.6
-ENV MYSQL_ROOT_PASSWORD=toor
-ENV MYSQL_DATABASE=notifier
-VOLUME /var/lib/mysql
-EXPOSE 3307
+FROM python:3
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY notifier_ue_pb2.py .
+COPY notifier_ue_pb2.pyi .
+COPY notifier_ue_pb2_grpc.py .
+COPY notifier/notifier_main.py .
+
+CMD [ "python", "notifier_main.py" ]

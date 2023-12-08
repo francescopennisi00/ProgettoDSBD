@@ -1,0 +1,5 @@
+FROM mysql:5.6
+ENV MYSQL_ROOT_PASSWORD=toor
+ENV MYSQL_DATABASE=notifier
+VOLUME /var/lib/mysql
+EXPOSE 3307
