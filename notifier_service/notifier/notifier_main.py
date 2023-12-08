@@ -6,7 +6,7 @@ import notifier_ue_pb2_grpc
 from email.message import EmailMessage
 import ssl
 import smtplib
-
+import mysql.connector
 
 
 def commit_completed(err):
@@ -14,6 +14,7 @@ def commit_completed(err):
         print(str(err))
     else:
         print("Notification fetched and stored in DB in order to be sent!")
+
 
 c = Consumer({'bootstrap.servers': 'kafka-1:29092',
               'group.id': 'group1',
@@ -47,10 +48,17 @@ try:
             violated_rules = data['violated_rules']
 
             #connection with DB and store event to be notified
-
+            with mysql.connector.connect(host="notifier_DB", user="root", password="toor", database="notifier") as mydb:
+                mycursor = mydb.cursor()
+                mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER, location_id INTEGER, rules VARCHAR(100000), time_stamp TIMESTAMP, sent BOOLEAN)")
+                mycursor.execute("INSERT INTO events VALUES(" + str(userId) +", " + str(location) + ", " + str(violated_rules) + ", CURRENT_TIMESTAMP(), FALSE")
 
             #make commit
-            c.commit(asynchronous=True)
+            try:
+                c.commit(asynchronous=True)
+                print("Commit done!")
+            except:
+                print("Error in commit!")
 
             #communication with user management in order to get user email
             with grpc.insecure_channel('user_management:50051') as channel:
@@ -77,6 +85,9 @@ try:
                 smtp.close()
 
             #connection with DB and update the entry of the notification sent
+            with mysql.connector.connect(host="notifier_DB", user="root", password="toor", database="notifier") as mydb:
+                mycursor = mydb.cursor()
+                mycursor.execute("UPDATE events SET sent=TRUE")
 
 except KeyboardInterrupt:
     pass
