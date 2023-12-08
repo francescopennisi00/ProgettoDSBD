@@ -3,6 +3,9 @@ import json
 import grpc
 import notifier_ue_pb2
 import notifier_ue_pb2_grpc
+from email.message import EmailMessage
+import ssl
+import smtplib
 
 
 
@@ -10,12 +13,12 @@ def commit_completed(err):
     if err:
         print(str(err))
     else:
-        print("Notification sent!")
+        print("Notification fetched and stored in DB in order to be sent!")
 
-c = Consumer({'bootstrap.servers': 'kafka_1:29092',
+c = Consumer({'bootstrap.servers': 'kafka-1:29092',
               'group.id': 'group1',
               'enable.auto.commit': 'false',
-              'auto.offset.reset': 'none',  # 'auto.offset.reset=earliest' to start reading from the beginning - [latest, earliest, none]
+              'auto.offset.reset': 'earliest',
               'on_commit': commit_completed
               })
 c.subscribe(['event_to_be_notified'])
@@ -32,6 +35,7 @@ try:
         elif msg.error():
             print('error: {}'.format(msg.error()))
         else:
+
             # Check for Kafka message
             record_key = msg.key()
             print(record_key)
@@ -41,16 +45,39 @@ try:
             userId = data['user_id']
             location = data['location_id']
             violated_rules = data['violated_rules']
+
+            #connection with DB and store event to be notified
+
+
+            #make commit
+            c.commit(asynchronous=True)
+
             #communication with user management in order to get user email
             with grpc.insecure_channel('user_management:50051') as channel:
                 stub = notifier_ue_pb2_grpc.NotifierUeStub(channel)
                 response = stub.RequestEmail(notifier_ue_pb2.Request(user_id=userId))
-            print(response.res)
-            email = "test" #fetched by response
-            #send notification by email
+            print(response.email)
+            email = response.email
 
-            # if msg_count % MIN_COMMIT_COUNT == 0:
-            c.commit(asynchronous=True)
+            #send notification by email
+            email_sender = "noreplydsbd@gmail.com"
+            email_password = "ifph uxrh kjaf ylkt"  #TODO: forse da nascondere
+            email_receiver = email
+            subject = "Alert notification!"
+            body = " messaggio di prova"   #TODO: da modificare con l'elenco delle rules violate
+            em=EmailMessage()
+            em['From'] = email_sender
+            em['To'] = email_receiver
+            em['Subject'] = subject
+            em.set_content(body)
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
+                smtp.login(email_sender,email_password)
+                smtp.sendmail(email_sender,email_receiver, em.as_string())
+                smtp.close()
+
+            #connection with DB and update the entry of the notification sent
+
 except KeyboardInterrupt:
     pass
 finally:
