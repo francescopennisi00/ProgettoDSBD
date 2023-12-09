@@ -1,0 +1,31 @@
+version: '1'
+
+services:
+  notifier_mysqlDB:
+    image: mysql:5.6
+    environment:
+      MYSQL_ROOT_PASSWORD: toor
+      MYSQL_DATABASE: notifier
+    volumes:
+      - notifier_volume:/var/lib/mysql
+    expose:
+      - "3307"
+    networks:
+      - wheather_network
+  notifier_service:
+    build:
+      context: ../notifier_service
+      dockerfile: Dockerfile
+    depends_on:
+      - notifier_mysqlDB
+    expose:
+      - "50000"
+    networks:
+      - wheather_network
+    restart: always
+
+volumes:
+  notifier_volume:
+
+networks:
+  wheather_network:
