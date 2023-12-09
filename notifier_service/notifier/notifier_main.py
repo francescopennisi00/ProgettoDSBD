@@ -50,8 +50,9 @@ try:
             #connection with DB and store event to be notified
             with mysql.connector.connect(host="notifier_mysqlDB", port= 3307, user="root", password="toor", database="notifier") as mydb:
                 mycursor = mydb.cursor()
-                mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER, location_id INTEGER, rules VARCHAR(100000), time_stamp TIMESTAMP, sent BOOLEAN)")
+                mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                 mycursor.execute("INSERT INTO events VALUES(" + str(userId) +", " + str(location) + ", " + str(violated_rules) + ", CURRENT_TIMESTAMP(), FALSE)")
+                last_id = mycursor.execute("SELECT MAX(id) FROM events;") #in order to get the ID of the latest row added
 
             #make commit
             try:
@@ -87,7 +88,7 @@ try:
             #connection with DB and update the entry of the notification sent
             with mysql.connector.connect(host="notifier_mysqlDB", port=3307, user="root", password="toor", database="notifier") as mydb:
                 mycursor = mydb.cursor()
-                mycursor.execute("UPDATE events SET sent=TRUE")
+                mycursor.execute("UPDATE events SET sent=TRUE WHERE id = last_id")
 
 except KeyboardInterrupt:
     pass
