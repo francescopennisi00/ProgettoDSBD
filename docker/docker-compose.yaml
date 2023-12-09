@@ -3,6 +3,7 @@ version: '3'
 services:
   notifier_mysqlDB:
     image: mysql:5.6
+    container_name: notifier_mysqlDB
     environment:
       MYSQL_ROOT_PASSWORD: toor
       MYSQL_DATABASE: notifier
@@ -13,6 +14,7 @@ services:
     networks:
       - wheather_network
   notifier_service:
+    container_name: notifier_service
     build:
       context: ../notifier_service
       dockerfile: Dockerfile
