@@ -10,4 +10,6 @@ COPY notifier_ue_pb2.pyi .
 COPY notifier_ue_pb2_grpc.py .
 COPY notifier/notifier_main.py .
 
+ENV APP_PASSWORD="ifph uxrh kjaf ylkt"
+
 CMD [ "python", "notifier_main.py" ]

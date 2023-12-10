@@ -7,6 +7,7 @@ from email.message import EmailMessage
 import ssl
 import smtplib
 import mysql.connector
+import os
 
 
 def commit_completed(err):
@@ -19,7 +20,7 @@ def commit_completed(err):
 c = Consumer({'bootstrap.servers': 'kafka-1:29092',
               'group.id': 'group1',
               'enable.auto.commit': 'false',
-              'auto.offset.reset': 'none',  #TODO: ragionarci su se conviene none o latest
+              'auto.offset.reset': 'latest',
               'on_commit': commit_completed
               })
 c.subscribe(['event_to_be_notified'])
@@ -77,7 +78,7 @@ try:
 
             #send notification by email
             email_sender = "noreplydsbd@gmail.com"
-            email_password = "ifph uxrh kjaf ylkt"  #TODO: forse da nascondere
+            email_password = os.environ.get('APP_PASSWORD')
             email_receiver = email
             subject = "Alert Notification!"
             body = " messaggio di prova"   #TODO: da modificare con l'elenco delle rules violate
