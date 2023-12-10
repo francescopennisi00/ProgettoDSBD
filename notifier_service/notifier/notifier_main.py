@@ -49,31 +49,37 @@ try:
 
             #connection with DB and store event to be notified
             with mysql.connector.connect(host="notifier_mysqlDB", port= 3307, user="root", password="toor", database="notifier") as mydb:
-                mycursor = mydb.cursor()
-                mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
-                mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
-                mydb.commit()  #to make changes effective
-                last_id = mycursor.lastrowid  #in order to get the ID of the latest row added
+                try:
+                    mycursor = mydb.cursor()
+                    mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
+                    mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
+                    mydb.commit()  #to make changes effective
+                    last_id = mycursor.lastrowid  #in order to get the ID of the latest row added
+                except mysql.connector.Error as err:
+                    print("Exception raised!\n" + str(err))
 
             #make commit
             try:
                 c.commit(asynchronous=True)
                 print("Commit done!")
-            except:
-                print("Error in commit!")
+            except Exception as e:
+                print("Error in commit!\n" + str(e))
 
             #communication with user management in order to get user email
             with grpc.insecure_channel('user_management:50051') as channel:
-                stub = notifier_ue_pb2_grpc.NotifierUeStub(channel)
-                response = stub.RequestEmail(notifier_ue_pb2.Request(user_id=userId))
-            print(response.email)
-            email = response.email
+                try:
+                    stub = notifier_ue_pb2_grpc.NotifierUeStub(channel)
+                    response = stub.RequestEmail(notifier_ue_pb2.Request(user_id=userId))
+                    print(response.email)
+                    email = response.email
+                except grpc.RpcError as error:
+                    print("gRPC error!\n" + str(error))
 
             #send notification by email
             email_sender = "noreplydsbd@gmail.com"
             email_password = "ifph uxrh kjaf ylkt"  #TODO: forse da nascondere
             email_receiver = email
-            subject = "Alert notification!"
+            subject = "Alert Notification!"
             body = " messaggio di prova"   #TODO: da modificare con l'elenco delle rules violate
             em = EmailMessage()
             em['From'] = email_sender
@@ -82,15 +88,20 @@ try:
             em.set_content(body)
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
-                smtp.login(email_sender, email_password)
-                smtp.sendmail(email_sender, email_receiver, em.as_string())
-                smtp.close()
+                try:
+                    smtp.login(email_sender, email_password)
+                    smtp.sendmail(email_sender, email_receiver, em.as_string())
+                except smtplib.SMTPException as exception:
+                    print("SMTP protocol error!\n" + str(exception))
 
             #connection with DB and update the entry of the notification sent
             with mysql.connector.connect(host="notifier_mysqlDB", port=3307, user="root", password="toor", database="notifier") as mydb:
-                mycursor = mydb.cursor()
-                mycursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(last_id), ))
-                mydb.commit()
+                try:
+                    mycursor = mydb.cursor()
+                    mycursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(last_id), ))
+                    mydb.commit()
+                except mysql.connector.Error as e:
+                    print("Exception raised!\n" + str(e))
 
 except KeyboardInterrupt:
     pass
