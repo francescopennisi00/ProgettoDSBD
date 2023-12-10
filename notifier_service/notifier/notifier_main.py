@@ -104,7 +104,7 @@ try:
                 except mysql.connector.Error as e:
                     print("Exception raised!\n" + str(e))
 
-except KeyboardInterrupt:
+except (KeyboardInterrupt, SystemExit): #to terminate correctly with either CTRL+C or docker stop
     pass
 finally:
     # Leave group and commit final offsets
