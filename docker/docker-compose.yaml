@@ -1,6 +1,7 @@
 version: '3'
 
 services:
+
   notifier_mysqlDB:
     image: mysql:5.6
     container_name: notifier_mysqlDB
@@ -14,6 +15,7 @@ services:
     networks:
       - wheather_network
     restart: always
+
   notifier_service:
     container_name: notifier_service
     build:
@@ -28,8 +30,37 @@ services:
       - wheather_network
     restart: always
 
+  um_mysqlDB:
+    image: mysql:5.6
+    container_name: um_mysqlDB
+    environment:
+      MYSQL_ROOT_PASSWORD: toor
+      MYSQL_DATABASE: um
+    volumes:
+      - um_volume:/var/lib/mysql
+    expose:
+      - "3308"
+    networks:
+      - wheather_network
+    restart: always
+
+  um_service:
+    container_name: um_service
+    build:
+      context: ../user_manager_service
+      dockerfile: Dockerfile
+    image: user_manager_service_image:1.0
+    depends_on:
+      - um_mysqlDB
+    expose:
+      - "50001"
+    networks:
+      - wheather_network
+    restart: always
+
 volumes:
   notifier_volume:
+  um_volume:
 
 networks:
   wheather_network:
