@@ -13,6 +13,7 @@ services:
       - "3307"
     networks:
       - wheather_network
+    restart: always
   notifier_service:
     container_name: notifier_service
     build:
