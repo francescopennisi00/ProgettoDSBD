@@ -16,5 +16,6 @@ ENV PORT=3307
 ENV USER="root"
 ENV PASSWORD="toor"
 ENV DATABASE="notifier"
+ENV EMAIL="noreplydsbd@gmail.com"
 
 CMD [ "python", "notifier_main.py" ]

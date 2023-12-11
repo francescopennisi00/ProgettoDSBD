@@ -10,45 +10,47 @@ import mysql.connector
 import os
 
 
-def commit_completed(err):
+def commit_completed(er):
     if err:
-        print(str(err))
+        print(str(er))
     else:
         print("Notification fetched and stored in DB in order to be sent!")
 
 
-def fetch_email(userId):
-    #communication with user management in order to get user email
+# communication with user management in order to get user email
+def fetch_email(userid):
     with grpc.insecure_channel('user_management:50051') as channel:
         try:
             stub = notifier_ue_pb2_grpc.NotifierUeStub(channel)
-            response = stub.RequestEmail(notifier_ue_pb2.Request(user_id=userId))
-            print(response.email)
-            email = response.email
-            return email
+            response = stub.RequestEmail(notifier_ue_pb2.Request(user_id=userid))
+            print("Fetched email: " + response.email)
+            return response.email
         except grpc.RpcError as error:
             print("gRPC error!\n" + str(error))
             return "null"
 
 
-def update_event_sent(id):
-    #connection with DB and update the entry of the notification sent
-    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port= os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+# connection with DB and update the entry of the notification sent
+def update_event_sent(event_id):
+    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
         try:
-            mycursor = mydb.cursor()
-            mycursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(id), ))
-            mydb.commit()
-        except mysql.connector.Error as e:
-            print("Exception raised!\n" + str(e))
+            cursor = mydb.cursor()
+            cursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(event_id),))
+            db.commit()
+            return True
+        except mysql.connector.Error as error:
+            print("Exception raised!\n" + str(error))
+            db.rollback()
+            return False
 
 
+# send notification by email
 def send_email(email):
-    #send notification by email
-    email_sender = "noreplydsbd@gmail.com"
+    email_sender = os.environ.get('EMAIL')
     email_password = os.environ.get('APP_PASSWORD')
     email_receiver = email
     subject = "Alert Notification!"
-    body = " messaggio di prova"   #TODO: da modificare con l'elenco delle rules violate
+    body = " messaggio di prova"  # TODO: da modificare con l'elenco delle rules violate
     em = EmailMessage()
     em['From'] = email_sender
     em['To'] = email_receiver
@@ -61,31 +63,35 @@ def send_email(email):
             smtp.sendmail(email_sender, email_receiver, em.as_string())
             return True
         except smtplib.SMTPException as exception:
-            mydb.rollback()
             print("SMTP protocol error!\n" + str(exception))
             return False
 
 
+# find events to send, send them by email and update events in DB
 def find_event_not_sent():
-    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port= os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
         try:
-            mycursor = mydb.cursor()
-            mycursor.execute("SELECT * FROM events WHERE sent=FALSE)")
-            results = mycursor.fetchall()
+            cursor = mydb.cursor()
+            cursor.execute("SELECT * FROM events WHERE sent=FALSE)")
+            results = cursor.fetchall()
             for x in results:
                 email = fetch_email(x[1])
                 if email == "null":
                     return False
-                result = send_email(email)
-                if result != True:
+                res = send_email(email)
+                if res != True:
                     return False
-                update_event_sent(x[0])
-            return True
+                # we give 5 attempts to try to update the DB in order
+                # to avoid resending the email as much as possible
+                for t in range(5):
+                    if update_event_sent(x[0]) == True:
+                        break
+                else: raise SystemExit
 
-        except mysql.connector.Error as err:
-            mydb.rollback()
-            print("Exception raised!\n" + str(err))
-            raise SystemExit #to terminate without Kafka commit
+
+        except mysql.connector.Error as error:
+            print("Exception raised!\n" + str(error))
+            raise SystemExit
 
 
 if __name__ == "__main__":
@@ -113,7 +119,6 @@ if __name__ == "__main__":
             elif msg.error():
                 print('error: {}'.format(msg.error()))
             else:
-
                 # Check for Kafka message
                 record_key = msg.key()
                 print(record_key)
@@ -124,20 +129,20 @@ if __name__ == "__main__":
                 location = data['location_id']
                 violated_rules = data['violated_rules']
 
-                #connection with DB and store event to be notified
-                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port= os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+                # connection with DB and store event to be notified
+                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     try:
                         mycursor = mydb.cursor()
                         mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
-                        mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
-                        mydb.commit()  #to make changes effective
-                        last_id = mycursor.lastrowid  #in order to get the ID of the latest row added
+                        mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (
+                        str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
+                        mydb.commit()  # to make changes effective
                     except mysql.connector.Error as err:
                         mydb.rollback()
                         print("Exception raised!\n" + str(err))
-                        raise SystemExit #to terminate without Kafka commit
+                        raise SystemExit  # to terminate without Kafka commit
 
-                #make commit
+                # make commit
                 try:
                     c.commit(asynchronous=True)
                     print("Commit done!")
@@ -145,7 +150,7 @@ if __name__ == "__main__":
                     print("Error in commit!\n" + str(e))
                     raise SystemExit
 
-    except (KeyboardInterrupt, SystemExit): #to terminate correctly with either CTRL+C or docker stop
+    except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop
         pass
     finally:
         # Leave group and commit final offsets
