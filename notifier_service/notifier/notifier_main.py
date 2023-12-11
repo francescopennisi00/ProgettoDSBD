@@ -28,7 +28,7 @@ def fetch_email(userId):
             return email
         except grpc.RpcError as error:
             print("gRPC error!\n" + str(error))
-            return -1
+            return "null"
 
 
 def update_event_sent(id):
@@ -74,7 +74,7 @@ def find_event_not_sent():
             results = mycursor.fetchall()
             for x in results:
                 email = fetch_email(x[1])
-                if email == -1:
+                if email == "null":
                     return False
                 result = send_email(email)
                 if result != True:

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package notifier_ue;
+
+service NotifierUe {
+  rpc RequestEmail (Request) returns (Reply) {}
+}
+
+message Request {
+  int64 user_id = 1;
+}
+
+message Reply {
+  string email = 1;
+}
