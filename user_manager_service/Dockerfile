@@ -14,6 +14,6 @@ ENV HOSTNAME="um_mysqlDB"
 ENV PORT=3308
 ENV USER="root"
 ENV PASSWORD="toor"
-ENV DATABASE="ue"
+ENV DATABASE="um"
 
 CMD [ "python", "user_manager_main.py" ]
