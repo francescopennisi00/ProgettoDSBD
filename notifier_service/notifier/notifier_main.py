@@ -49,7 +49,7 @@ try:
             violated_rules = data['violated_rules']
 
             #connection with DB and store event to be notified
-            with mysql.connector.connect(host="notifier_mysqlDB", port= 3307, user="root", password="toor", database="notifier") as mydb:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port= os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                 try:
                     mycursor = mydb.cursor()
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
@@ -98,7 +98,7 @@ try:
                     print("SMTP protocol error!\n" + str(exception))
 
             #connection with DB and update the entry of the notification sent
-            with mysql.connector.connect(host="notifier_mysqlDB", port=3307, user="root", password="toor", database="notifier") as mydb:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port= os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                 try:
                     mycursor = mydb.cursor()
                     mycursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(last_id), ))
