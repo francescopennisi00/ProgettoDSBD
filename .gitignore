@@ -3,3 +3,4 @@
 
 #Environment
 notifier_service/venv
+user_manager_service/venv_um
