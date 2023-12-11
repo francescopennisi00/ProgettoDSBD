@@ -57,6 +57,7 @@ try:
                     mydb.commit()  #to make changes effective
                     last_id = mycursor.lastrowid  #in order to get the ID of the latest row added
                 except mysql.connector.Error as err:
+                    mydb.rollback()
                     print("Exception raised!\n" + str(err))
 
             #make commit
@@ -93,6 +94,7 @@ try:
                     smtp.login(email_sender, email_password)
                     smtp.sendmail(email_sender, email_receiver, em.as_string())
                 except smtplib.SMTPException as exception:
+                    mydb.rollback()
                     print("SMTP protocol error!\n" + str(exception))
 
             #connection with DB and update the entry of the notification sent
