@@ -11,7 +11,7 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
 
     def RequestEmail(self, request, context):
         # connection with DB and retrieve email
-        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port= os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
             try:
                 mycursor = mydb.cursor()
                 mycursor.execute("SELECT email FROM users WHERE id= %s", (str(request.user_id),))
