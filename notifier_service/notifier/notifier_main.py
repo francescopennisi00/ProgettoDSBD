@@ -1,8 +1,8 @@
 from confluent_kafka import Consumer
 import json
 import grpc
-import notifier_ue_pb2
-import notifier_ue_pb2_grpc
+import notifier_um_pb2
+import notifier_um_pb2_grpc
 from email.message import EmailMessage
 import ssl
 import smtplib
@@ -21,8 +21,8 @@ def commit_completed(er):
 def fetch_email(userid):
     with grpc.insecure_channel('user_management:50051') as channel:
         try:
-            stub = notifier_ue_pb2_grpc.NotifierUeStub(channel)
-            response = stub.RequestEmail(notifier_ue_pb2.Request(user_id=userid))
+            stub = notifier_um_pb2_grpc.NotifierUmStub(channel)
+            response = stub.RequestEmail(notifier_um_pb2.Request(user_id=userid))
             print("Fetched email: " + response.email)
             return response.email
         except grpc.RpcError as error:
