@@ -19,7 +19,7 @@ def commit_completed(er):
 
 # communication with user management in order to get user email
 def fetch_email(userid):
-    with grpc.insecure_channel('user_management:50051') as channel:
+    with grpc.insecure_channel('um_service:50051') as channel:
         try:
             stub = notifier_um_pb2_grpc.NotifierUmStub(channel)
             response = stub.RequestEmail(notifier_um_pb2.Request(user_id=userid))

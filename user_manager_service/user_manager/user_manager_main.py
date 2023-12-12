@@ -54,6 +54,16 @@ def serve_apigateway():
 
 
 if __name__ == '__main__':
+    # Creating table users if not exits
+    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+        try:
+            mycursor = mydb.cursor()
+            mycursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")  #TODO: to insert token JWT
+            mydb.commit()  # to make changes effective
+        except mysql.connector.Error as err:
+            mydb.rollback()
+            print("Exception raised!\n" + str(err))
+            raise SystemExit
     print("Starting notifier serving thread !")
     threadNotifier = threading.Thread(target=serve_notifier())
     print("Starting WMS serving thread!")
