@@ -1,4 +1,4 @@
-from confluent_kafka import Consumer
+import confluent_kafka
 import json
 import grpc
 import notifier_um_pb2
@@ -9,6 +9,7 @@ import smtplib
 import mysql.connector
 import os
 import time
+import sys
 
 
 def commit_completed(er):
@@ -98,13 +99,19 @@ def find_event_not_sent():
 
 if __name__ == "__main__":
 
-    c = Consumer({'bootstrap.servers': 'kafka-1:29092',
+    c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka-1:29092',
                   'group.id': 'group1',
                   'enable.auto.commit': 'false',
                   'auto.offset.reset': 'latest',
                   'on_commit': commit_completed
                   })
-    c.subscribe(['event_to_be_notified'])
+    try:
+        c.subscribe(['event_to_be_notified'])
+    except confluent_kafka.KafkaException as ke:
+        print("Kafka exception raised!\n" + str(ke))
+        c.close()
+        sys.exit("Terminate after Exception raised in Kafka topic subscribe")
+
     try:
         while True:
             # Creating table if not exits
@@ -132,6 +139,8 @@ if __name__ == "__main__":
                 continue
             elif msg.error():
                 print('error: {}'.format(msg.error()))
+                if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
+                    raise SystemExit
             else:
                 # Check for Kafka message
                 record_key = msg.key()
