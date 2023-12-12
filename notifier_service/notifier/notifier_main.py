@@ -8,6 +8,7 @@ import ssl
 import smtplib
 import mysql.connector
 import os
+import time
 
 
 def commit_completed(er):
@@ -86,8 +87,9 @@ def find_event_not_sent():
                 for t in range(5):
                     if update_event_sent(x[0]) == True:
                         break
-                else: raise SystemExit
-
+                    time.sleep(1)
+                else:
+                    raise SystemExit
 
         except mysql.connector.Error as error:
             print("Exception raised!\n" + str(error))
