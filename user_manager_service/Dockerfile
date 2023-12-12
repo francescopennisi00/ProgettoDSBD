@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY notifier_um_pb2.py .
 COPY notifier_um_pb2.pyi .
 COPY notifier_um_pb2_grpc.py .
-COPY notifier/user_manager_main.py .
+COPY user_manager/user_manager_main.py .
 
 ENV HOSTNAME="um_mysqlDB"
 ENV PORT=3308
