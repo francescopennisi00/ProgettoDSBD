@@ -12,7 +12,7 @@ COPY notifier/notifier_main.py .
 
 ENV APP_PASSWORD="ifph uxrh kjaf ylkt"
 ENV HOSTNAME="notifier_mysqlDB"
-ENV PORT=3307
+ENV PORT=3306
 ENV USER="root"
 ENV PASSWORD="toor"
 ENV DATABASE="notifier"

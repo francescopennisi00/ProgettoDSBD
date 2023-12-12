@@ -11,7 +11,7 @@ COPY notifier_um_pb2_grpc.py .
 COPY user_manager/user_manager_main.py .
 
 ENV HOSTNAME="um_mysqlDB"
-ENV PORT=3308
+ENV PORT=3306
 ENV USER="root"
 ENV PASSWORD="toor"
 ENV DATABASE="um"
