@@ -105,6 +105,18 @@ if __name__ == "__main__":
     c.subscribe(['event_to_be_notified'])
     try:
         while True:
+            # Creating table if not exits
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+                try:
+                    mycursor = mydb.cursor()
+                    mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
+                    mydb.commit()  # to make changes effective
+                except mysql.connector.Error as err:
+                    mydb.rollback()
+                    print("Exception raised!\n" + str(err))
+                    raise SystemExit
+
+            # Looking for entries that have sent == False
             result = find_event_not_sent()
             if result == False:
                 continue
@@ -133,7 +145,6 @@ if __name__ == "__main__":
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     try:
                         mycursor = mydb.cursor()
-                        mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                         mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
                         mydb.commit()  # to make changes effective
                     except mysql.connector.Error as err:
