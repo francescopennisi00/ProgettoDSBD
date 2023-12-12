@@ -72,7 +72,7 @@ def find_event_not_sent():
     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
         try:
             cursor = db.cursor()
-            cursor.execute("SELECT * FROM events WHERE sent=FALSE)")
+            cursor.execute("SELECT * FROM events WHERE sent=FALSE")
             results = cursor.fetchall()
             for x in results:
                 email = fetch_email(x[1])
