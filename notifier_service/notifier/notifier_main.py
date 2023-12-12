@@ -99,12 +99,7 @@ def find_event_not_sent():
 
 if __name__ == "__main__":
 
-    c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka:29092',
-                  'group.id': 'group1',
-                  'enable.auto.commit': 'false',
-                  'auto.offset.reset': 'latest',
-                  'on_commit': commit_completed
-                  })
+    c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka:29092', 'group.id': 'group1', 'enable.auto.commit': 'false', 'auto.offset.reset': 'latest', 'on_commit': commit_completed})
     try:
         c.subscribe(['event_to_be_notified'])
     except confluent_kafka.KafkaException as ke:
