@@ -11,7 +11,7 @@ import os
 
 
 def commit_completed(er):
-    if err:
+    if er:
         print(str(er))
     else:
         print("Notification fetched and stored in DB in order to be sent!")
@@ -34,7 +34,7 @@ def fetch_email(userid):
 def update_event_sent(event_id):
     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
         try:
-            cursor = mydb.cursor()
+            cursor = db.cursor()
             cursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(event_id),))
             db.commit()
             return True
