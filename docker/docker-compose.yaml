@@ -1,4 +1,4 @@
-version: '3'
+version: '3.6'
 
 services:
 
@@ -40,8 +40,10 @@ services:
   notifier_mysqlDB:
     image: mysql:5.6
     container_name: notifier_mysqlDB
+    secrets:
+      - notifier_DB_root_psw
     environment:
-      MYSQL_ROOT_PASSWORD: toor
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/notifier_DB_root_psw
       MYSQL_DATABASE: notifier
     volumes:
       - notifier_volume:/var/lib/mysql
@@ -56,12 +58,24 @@ services:
     build:
       context: ../notifier_service
       dockerfile: Dockerfile
-    image: notifier_service_image:1.0
+    image: notifier_service_image:latest
     depends_on:
       - notifier_mysqlDB
       - kafka
     expose:
       - "50000"
+    secrets:
+      - app_password
+      - notifier_DB_root_psw
+      - email
+    environment:
+      APP_PASSWORD: /run/secrets/app_password
+      HOSTNAME: "notifier_mysqlDB"
+      PORT: 3306
+      USER: "root"
+      PASSWORD: /run/secrets/notifier_DB_root_psw
+      DATABASE: "notifier"
+      EMAIL: /run/secrets/email
     networks:
       - wheather_network
     restart: always
@@ -69,8 +83,10 @@ services:
   um_mysqlDB:
     image: mysql:5.6
     container_name: um_mysqlDB
+    secrets:
+      - um_DB_root_psw
     environment:
-      MYSQL_ROOT_PASSWORD: toor
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/um_DB_root_psw
       MYSQL_DATABASE: um
     volumes:
       - um_volume:/var/lib/mysql
@@ -85,11 +101,19 @@ services:
     build:
       context: ../user_manager_service
       dockerfile: Dockerfile
-    image: user_manager_service_image:1.0
+    image: user_manager_service_image:latest
     depends_on:
       - um_mysqlDB
     expose:
       - "50001"
+    secrets:
+      - um_DB_root_psw
+    environment:
+      HOSTNAME: "um_mysqlDB"
+      PORT: 3306
+      USER: "root"
+      PASSWORD: /run/secrets/um_DB_root_psw
+      DATABASE: "um"
     networks:
       - wheather_network
     restart: always
@@ -105,3 +129,13 @@ volumes:
 
 networks:
   wheather_network:
+
+secrets:
+  notifier_DB_root_psw:
+    file: notifier_DB_root_psw.txt
+  app_password:
+    file: app_password.txt
+  email:
+    file: email.txt
+  um_DB_root_psw:
+    file: um_DB_root.txt

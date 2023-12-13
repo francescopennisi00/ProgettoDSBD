@@ -54,6 +54,13 @@ def serve_apigateway():
 
 
 if __name__ == '__main__':
+
+    # setting env variables for secrets
+    secret_password_path = os.environ.get('PASSWORD')
+    with open(secret_password_path, 'r') as file:
+        secret_password_value = file.read()
+    os.environ['PASSWORD'] = secret_password_value
+
     # Creating table users if not exits
     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
         try:

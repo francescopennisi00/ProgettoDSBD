@@ -99,6 +99,21 @@ def find_event_not_sent():
 
 if __name__ == "__main__":
 
+    # setting env variables for secrets
+    secret_password_path = os.environ.get('PASSWORD')
+    with open(secret_password_path, 'r') as file:
+        secret_password_value = file.read()
+    os.environ['PASSWORD'] = secret_password_value
+    secret_app_password_path = os.environ.get('APP_PASSWORD')
+    with open(secret_app_password_path, 'r') as file:
+        secret_app_password_value = file.read()
+    os.environ['APP_PASSWORD'] = secret_app_password_value
+    secret_email_path = os.environ.get('EMAIL')
+    with open(secret_email_path, 'r') as file:
+        secret_email_value = file.read()
+    os.environ['EMAIL'] = secret_email_value
+
+    # start Kafka subscription
     c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka:29092', 'group.id': 'group1', 'enable.auto.commit': 'false', 'auto.offset.reset': 'latest', 'on_commit': commit_completed})
     try:
         c.subscribe(['event_to_be_notified'])
