@@ -20,6 +20,7 @@ def make_query(query):
     except Exception as e:
         print(f'Error: {e}')
 
+
 def check_rules(db_cursor,api_response):
     db_cursor.execute("SELECT rules FROM current_works")
     rules_list = db_cursor.fetchall()
@@ -64,7 +65,7 @@ def check_rules(db_cursor,api_response):
                     user_violated_rules_list.append(temp_dict)
                     temp_dict.clear()
                     event_dict[rules.get("user_id")] = user_violated_rules_list
-
+        return json.dumps(event_dict)
 
 
 # function to formatting data returned by OpenWheater API according to our business logic
@@ -114,15 +115,12 @@ def find_current_works():
                 rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_row[2]}&lon={location_row[3]}&appid={apikey}"
                 data = make_query(rest_call)
                 formatted_data = format_data(data)
-                check_rules(cursor, formatted_data)
+                events_to_be_sent = check_rules(cursor, formatted_data)
+            return events_to_be_sent
 
-
-
-
-
-        except mysql.connector.Error as err:
+        except mysql.connector.Error as error:
             db.rollback()
-            print("Exception raised!\n" + str(err))
+            print("Exception raised!\n" + str(error))
             sys.exit("Exiting...")
 
 
@@ -151,4 +149,6 @@ if __name__ == "__main__":
             sys.exit("Exiting...")
 
     while True:
-        find_current_works()
+        1
+        # x = find_current_works()
+        # TODO: inizializzazione Kafka all'inizio fuori dal loop, eventuale publish di x fuori al loop, ma dopo find, polling, scrittura DB, commit, chiamata find_chceck
