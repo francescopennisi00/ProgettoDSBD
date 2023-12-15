@@ -38,7 +38,7 @@ services:
       - kafka_data_volume:/var/lib/kafka/data
 
   notifier_mysqlDB:
-    image: mysql:5.6
+    image: mysql:latest
     container_name: notifier_mysqlDB
     secrets:
       - notifier_DB_root_psw
@@ -81,7 +81,7 @@ services:
     restart: always
 
   um_mysqlDB:
-    image: mysql:5.6
+    image: mysql:latest
     container_name: um_mysqlDB
     secrets:
       - um_DB_root_psw
