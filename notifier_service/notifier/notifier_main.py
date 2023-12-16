@@ -57,7 +57,7 @@ def send_email(email):
     email_password = os.environ.get('APP_PASSWORD')
     email_receiver = email
     subject = "Alert Notification!"
-    body = " messaggio di prova"  # TODO: da modificare con l'elenco delle rules violate
+    body = " messaggio di prova"  # TODO: da modificare con l'elenco delle rules violate (come parametro)
     em = EmailMessage()
     em['From'] = email_sender
     em['To'] = email_receiver
@@ -87,7 +87,7 @@ def find_event_not_sent():
             if email == "null":
                 db.close()
                 return False
-            res = send_email(email)
+            res = send_email(email)  #TODO: other params required
             if res != True:
                 db.close()
                 return False
@@ -136,6 +136,9 @@ if __name__ == "__main__":
             try:
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     mycursor = mydb.cursor()
+                    # TODO: e' necessaria la location id o il nome della localita'? Anche il notifier
+                    # TODO: ha la tabella locations o le informazioni sulla localita' gli vengono
+                    # TODO: fornite? Rispondere dopo aver completato il worker!
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
@@ -170,6 +173,7 @@ if __name__ == "__main__":
                 record_value = msg.value()
                 print(record_value)
                 data = json.loads(record_value)
+                # TODO: to reiviewed after completing the worker
                 userId = data['user_id']
                 location = data['location_id']
                 violated_rules = data['violated_rules']
