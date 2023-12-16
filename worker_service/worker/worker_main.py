@@ -135,7 +135,7 @@ if __name__ == "__main__":
     try:
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS currents_works (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules VARCHAR(100000) NOT NULL, time_stamp TIMESTAMP NOT NULL, FOREIGN KEY(location_id) REFERENCES locations(id))")
+            mycursor.execute("CREATE TABLE IF NOT EXISTS currents_works (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, FOREIGN KEY(location_id) REFERENCES locations(id))")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         print("Exception raised!\n" + str(err))
@@ -145,7 +145,15 @@ if __name__ == "__main__":
             print(f"Exception raised in rollback: {exe}")
         sys.exit("Exiting...")
 
+    current_works = find_current_works()
+    if current_works == False:
+        sys.exit("Exiting after error in fetching rules to send")
+    # TODO: Kafka producer initialization in order to publish in topic "event_to_be_sent"
+    # TODO: check if current works are pending and if it is true publish them to Kafka
+
     while True:
         1
-        # x = find_current_works()
-        # TODO: inizializzazione Kafka all'inizio fuori dal loop, eventuale publish di x fuori al loop, ma dopo find, polling, scrittura DB, commit, chiamata find_chceck
+        # TODO: polling messages in Kafka topic "event_update"
+        # TODO: update current_works and location (if required) in DB
+        # TODO: Kafka commit
+        # TODO: call to find_current_works and publish them in topic "event_to_be_sent"
