@@ -21,29 +21,34 @@ def commit_completed(er):
 
 # communication with user management in order to get user email
 def fetch_email(userid):
-    with grpc.insecure_channel('um_service:50051') as channel:
-        try:
+    try:
+        with grpc.insecure_channel('um_service:50051') as channel:
             stub = notifier_um_pb2_grpc.NotifierUmStub(channel)
             response = stub.RequestEmail(notifier_um_pb2.Request(user_id=userid))
             print("Fetched email: " + response.email)
-            return response.email
-        except grpc.RpcError as error:
-            print("gRPC error!\n" + str(error))
-            return "null"
+            email_to_return = response.email
+    except grpc.RpcError as error:
+        print("gRPC error!\n" + str(error))
+        email_to_return = "null"
+    return email_to_return
 
 
 # connection with DB and update the entry of the notification sent
 def update_event_sent(event_id):
-    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
-        try:
+    try:
+        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
             cursor = db.cursor()
             cursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(event_id),))
             db.commit()
-            return True
-        except mysql.connector.Error as error:
-            print("Exception raised!\n" + str(error))
+            boolean_to_return = True
+    except mysql.connector.Error as error:
+        print("Exception raised!\n" + str(error))
+        boolean_to_return = False
+        try:
             db.rollback()
-            return False
+        except Exception as exc:
+            print(f"Exception raised in rollback: {exc}")
+    return boolean_to_return
 
 
 # send notification by email
@@ -59,42 +64,45 @@ def send_email(email):
     em['Subject'] = subject
     em.set_content(body)
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
-        try:
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
             smtp.login(email_sender, email_password)
             smtp.sendmail(email_sender, email_receiver, em.as_string())
-            return True
-        except smtplib.SMTPException as exception:
-            print("SMTP protocol error!\n" + str(exception))
-            return False
+            boolean_to_return = True
+    except smtplib.SMTPException as exception:
+        print("SMTP protocol error!\n" + str(exception))
+        boolean_to_return = False
+    return boolean_to_return
 
 
 # find events to send, send them by email and update events in DB
 def find_event_not_sent():
-    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
-        try:
-            cursor = db.cursor()
-            cursor.execute("SELECT * FROM events WHERE sent=FALSE")
-            results = cursor.fetchall()
-            for x in results:
-                email = fetch_email(x[1])
-                if email == "null":
-                    return False
-                res = send_email(email)
-                if res != True:
-                    return False
-                # we give 5 attempts to try to update the DB in order
-                # to avoid resending the email as much as possible
-                for t in range(5):
-                    if update_event_sent(x[0]) == True:
-                        break
-                    time.sleep(1)
-                else:
-                    raise SystemExit
+    try:
+        db = mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE'))
+        cursor = db.cursor()
+        cursor.execute("SELECT * FROM events WHERE sent=FALSE")
+        results = cursor.fetchall()
+        for x in results:
+            email = fetch_email(x[1])
+            if email == "null":
+                db.close()
+                return False
+            res = send_email(email)
+            if res != True:
+                db.close()
+                return False
+            # we give 5 attempts to try to update the DB in order
+            # to avoid resending the email as much as possible
+            for t in range(5):
+                if update_event_sent(x[0]) == True:
+                    break
+                time.sleep(1)
+            else:
+                raise SystemExit
 
-        except mysql.connector.Error as error:
-            print("Exception raised!\n" + str(error))
-            raise SystemExit
+    except mysql.connector.Error as error:
+        print("Exception raised!\n" + str(error))
+        raise SystemExit
 
 
 if __name__ == "__main__":
@@ -125,20 +133,24 @@ if __name__ == "__main__":
     try:
         while True:
             # Creating table if not exits
-            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
-                try:
+            try:
+                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     mycursor = mydb.cursor()
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                     mydb.commit()  # to make changes effective
-                except mysql.connector.Error as err:
+            except mysql.connector.Error as err:
+                print("Exception raised!\n" + str(err))
+                try:
                     mydb.rollback()
-                    print("Exception raised!\n" + str(err))
-                    raise SystemExit
+                except Exception as excep:
+                    print(f"Exception raised in rollback: {excep}")
+                raise SystemExit
 
             # Looking for entries that have sent == False
             result = find_event_not_sent()
             if result == False:
                 continue
+
             msg = c.poll(timeout=5.0)
             if msg is None:
                 # No message available within timeout.
@@ -163,15 +175,18 @@ if __name__ == "__main__":
                 violated_rules = data['violated_rules']
 
                 # connection with DB and store event to be notified
-                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
-                    try:
+                try:
+                    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                         mycursor = mydb.cursor()
                         mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
                         mydb.commit()  # to make changes effective
-                    except mysql.connector.Error as err:
+                except mysql.connector.Error as err:
+                    print("Exception raised!\n" + str(err))
+                    try:
                         mydb.rollback()
-                        print("Exception raised!\n" + str(err))
-                        raise SystemExit  # to terminate without Kafka commit
+                    except Exception as exe:
+                        print(f"Exception raised in rollback: {exe}")
+                    raise SystemExit  # to terminate without Kafka commit
 
                 # make commit
                 try:
