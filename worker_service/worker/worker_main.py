@@ -1,4 +1,4 @@
-import confluent_kafka
+from confluent_kafka import Producer
 import json
 import mysql.connector
 import os
@@ -114,6 +114,22 @@ def find_current_works():
         return False
     return events_to_be_sent
 
+def produce_kafka_message(producer_kafka, current_works):
+    # Publish on the specific topic
+    try:
+        producer_kafka.produce(topic, value=current_works, callback=delivery_callback)
+    except BufferError:
+        sys.stderr.write('%% Local producer queue is full (%d messages awaiting delivery): try again\n' %len(producer_kafka))
+        return False
+
+    producer_kafka.poll(0)
+
+    # Wait until all messages have been delivered
+    sys.stderr.write('%% Waiting for %d deliveries\n' % len(producer_kafka))
+    producer_kafka.flush()
+    return True
+
+
 
 if __name__ == "__main__":
 
@@ -149,7 +165,29 @@ if __name__ == "__main__":
     if current_works == False:
         sys.exit("Exiting after error in fetching rules to send")
     # TODO: Kafka producer initialization in order to publish in topic "event_to_be_sent"
+
+    broker = 'localhost:29092'
+    topic = 'event_to_be_notified'
+    conf = {'bootstrap.servers': broker}
+
+    # Create Producer instance
+    producer_kafka = Producer(**conf)
+
+    # Optional per-message delivery callback (triggered by poll() or flush())
+    # when a message has been successfully delivered or permanently
+    # failed delivery (after retries).
+    def delivery_callback(err, msg):
+        if err:
+            sys.stderr.write('%% Message failed delivery: %s\n' % err)
+        else:
+            sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
+                             (msg.topic(), msg.partition(), msg.offset()))
+
     # TODO: check if current works are pending and if it is true publish them to Kafka
+    if current_works != '{}': # JSON representation of an empty dictionary.
+        produce_kafka_message(producer_kafka, current_works)
+    else:
+        print("There is no backlog of work")
 
     while True:
         1

@@ -118,9 +118,49 @@ services:
       - wheather_network
     restart: always
 
+  worker_mysqlDB:
+    image: mysql:latest
+    container_name: worker_mysqlDB
+    secrets:
+      - worker_DB_root_psw
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/worker_DB_root_psw
+      MYSQL_DATABASE: worker
+    volumes:
+      - worker_volume:/var/lib/mysql
+    expose:
+      - "3306"
+    networks:
+      - wheather_network
+    restart: always
+
+  worker_service:
+    container_name: worker_service
+    build:
+      context: ../worker_service
+      dockerfile: Dockerfile
+    image: worker_service_image:latest
+    depends_on:
+      - worker_mysqlDB
+      - kafka
+    expose:
+      - "50002"
+    secrets:
+      - worker_DB_root_psw
+    environment:
+      HOSTNAME: "worker_mysqlDB"
+      PORT: 3306
+      USER: "root"
+      PASSWORD: /run/secrets/worker_DB_root_psw
+      DATABASE: "worker"
+    networks:
+      - wheather_network
+    restart: always
+
 volumes:
   notifier_volume:
   um_volume:
+  worker_volume:
   zookeeper_data_volume:
   zookeeper_log_volume:
   zookeeper_secrets_volume:
@@ -139,3 +179,5 @@ secrets:
     file: email.txt
   um_DB_root_psw:
     file: um_DB_root.txt
+  worker_DB_root_psw:
+    file: worker_DB_root.txt
