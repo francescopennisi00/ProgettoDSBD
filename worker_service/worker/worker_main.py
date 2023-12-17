@@ -1,9 +1,16 @@
-from confluent_kafka import Producer
+import confluent_kafka
 import json
 import mysql.connector
 import os
 import sys
 import requests
+
+
+def commit_completed(er):
+    if er:
+        print(str(er))
+    else:
+        print("Notification fetched and stored in DB in order to be sent!")
 
 
 def make_query(query):
@@ -76,7 +83,7 @@ def format_data(data):
         if (i - 22.5) <= data["wind"]["deg"] <= (i + 22.5):
             output_json_dict["wind_direction"] = direction_list[j]
             break
-        j = j+1
+        j = j + 1
     if data["weather"]["main"] == "Rain":
         output_json_dict["rain"] = True
     else:
@@ -91,7 +98,9 @@ def format_data(data):
 # function for recovering unchecked rules when worker goes down before publishing notification event
 def find_current_works():
     try:
-        with (mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db_conn):
+        with (mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                      database=os.environ.get('DATABASE')) as db_conn):
             db_cursor = db_conn.cursor()
             db_cursor.execute("SELECT location_id FROM current_works GROUP BY location_id")
             results = db_cursor.fetchall()
@@ -114,12 +123,14 @@ def find_current_works():
         return False
     return events_to_be_sent
 
+
 def produce_kafka_message(producer_kafka, current_works):
     # Publish on the specific topic
     try:
         producer_kafka.produce(topic, value=current_works, callback=delivery_callback)
     except BufferError:
-        sys.stderr.write('%% Local producer queue is full (%d messages awaiting delivery): try again\n' %len(producer_kafka))
+        sys.stderr.write(
+            '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(producer_kafka))
         return False
 
     producer_kafka.poll(0)
@@ -130,14 +141,16 @@ def produce_kafka_message(producer_kafka, current_works):
     return True
 
 
-
 if __name__ == "__main__":
 
     # create table locations if not exists
     try:
-        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
+        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                     database=os.environ.get('DATABASE')) as db:
             cursor = db.cursor()
-            cursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, name VARCHAR(40) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, state_code varchar(30), country_code VARCHAR(10))")
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, name VARCHAR(40) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, state_code varchar(30), country_code VARCHAR(10))")
             db.commit()  # to make changes effective
     except mysql.connector.Error as err:
         print("Exception raised!\n" + str(err))
@@ -149,9 +162,12 @@ if __name__ == "__main__":
 
     # create table current_works if not exists
     try:
-        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                     database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS currents_works (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, FOREIGN KEY(location_id) REFERENCES locations(id))")
+            mycursor.execute(
+                "CREATE TABLE IF NOT EXISTS currents_works (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, FOREIGN KEY(location_id) REFERENCES locations(id))")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         print("Exception raised!\n" + str(err))
@@ -171,7 +187,8 @@ if __name__ == "__main__":
     conf = {'bootstrap.servers': broker}
 
     # Create Producer instance
-    producer_kafka = Producer(**conf)
+    producer_kafka = confluent_kafka.Producer(**conf)
+
 
     # Optional per-message delivery callback (triggered by poll() or flush())
     # when a message has been successfully delivered or permanently
@@ -183,15 +200,49 @@ if __name__ == "__main__":
             sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
                              (msg.topic(), msg.partition(), msg.offset()))
 
+
     # TODO: check if current works are pending and if it is true publish them to Kafka
-    if current_works != '{}': # JSON representation of an empty dictionary.
+    if current_works != '{}':  # JSON representation of an empty dictionary.
         produce_kafka_message(producer_kafka, current_works)
     else:
         print("There is no backlog of work")
 
-    while True:
-        1
-        # TODO: polling messages in Kafka topic "event_update"
-        # TODO: update current_works and location (if required) in DB
-        # TODO: Kafka commit
-        # TODO: call to find_current_works and publish them in topic "event_to_be_sent"
+    # start Kafka subscription
+    consumer_kafka = confluent_kafka.Consumer(
+        {'bootstrap.servers': 'kafka:29092', 'group.id': 'group2', 'enable.auto.commit': 'false',
+         'auto.offset.reset': 'latest', 'on_commit': commit_completed}) # TODO chiarire problematiche sulla configurazione kafka per gestioni gruppi
+    try:
+        consumer_kafka.subscribe(['event_update'])  # the worker_service is also a Consumer related to the WMS Producer
+    except confluent_kafka.KafkaException as ke:
+        print("Kafka exception raised!\n" + str(ke))
+        consumer_kafka.close()
+        sys.exit("Terminate after Exception raised in Kafka topic subscribe")
+
+    try:
+        while True:
+            1
+            # TODO: polling messages in Kafka topic "event_update"
+            msg = consumer_kafka.poll(timeout=5.0)
+            if msg is None:
+                # No message available within timeout.
+                # Initial message consumption may take up to
+                # `session.timeout.ms` for the consumer group to
+                # rebalance and start consuming
+                print("Waiting for message or event/error in poll()")
+                continue
+            elif msg.error():
+                print('error: {}'.format(msg.error()))
+                if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
+                    raise SystemExit
+            else:
+                1
+                # Check for Kafka message
+            # TODO: update current_works and location (if required) in DB
+            # TODO: Kafka commit
+            # TODO: call to find_current_works and publish them in topic "event_to_be_sent"
+
+    except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop
+        pass
+    finally:
+        # Leave group and commit final offsets
+        consumer_kafka.close()
