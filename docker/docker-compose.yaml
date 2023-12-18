@@ -178,6 +178,6 @@ secrets:
   email:
     file: email.txt
   um_DB_root_psw:
-    file: um_DB_root.txt
+    file: um_DB_root_psw.txt
   worker_DB_root_psw:
-    file: worker_DB_root.txt
+    file: worker_DB_root_psw.txt
