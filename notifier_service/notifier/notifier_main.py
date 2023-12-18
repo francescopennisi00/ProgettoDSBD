@@ -28,7 +28,7 @@ def fetch_email(userid):
             print("Fetched email: " + response.email)
             email_to_return = response.email
     except grpc.RpcError as error:
-        print("gRPC error!\n" + str(error))
+        sys.stderr.write("gRPC error!\n" + str(error))
         email_to_return = "null"
     return email_to_return
 
@@ -42,12 +42,12 @@ def update_event_sent(event_id):
             db.commit()
             boolean_to_return = True
     except mysql.connector.Error as error:
-        print("Exception raised!\n" + str(error))
+        sys.stderr.write("Exception raised!\n" + str(error))
         boolean_to_return = False
         try:
             db.rollback()
         except Exception as exc:
-            print(f"Exception raised in rollback: {exc}")
+            sys.stderr.write(f"Exception raised in rollback: {exc}")
     return boolean_to_return
 
 
@@ -70,7 +70,7 @@ def send_email(email):
             smtp.sendmail(email_sender, email_receiver, em.as_string())
             boolean_to_return = True
     except smtplib.SMTPException as exception:
-        print("SMTP protocol error!\n" + str(exception))
+        sys.stderr.write("SMTP protocol error!\n" + str(exception))
         boolean_to_return = False
     return boolean_to_return
 
@@ -101,7 +101,7 @@ def find_event_not_sent():
                 raise SystemExit
 
     except mysql.connector.Error as error:
-        print("Exception raised!\n" + str(error))
+        sys.stderr.write("Exception raised!\n" + str(error))
         raise SystemExit
 
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     try:
         c.subscribe(['event_to_be_notified'])
     except confluent_kafka.KafkaException as ke:
-        print("Kafka exception raised!\n" + str(ke))
+        sys.stderr.write("Kafka exception raised!\n" + str(ke))
         c.close()
         sys.exit("Terminate after Exception raised in Kafka topic subscribe")
 
@@ -142,11 +142,11 @@ if __name__ == "__main__":
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
-                print("Exception raised!\n" + str(err))
+                sys.stderr.write("Exception raised!\n" + str(err))
                 try:
                     mydb.rollback()
                 except Exception as excep:
-                    print(f"Exception raised in rollback: {excep}")
+                    sys.stderr.write(f"Exception raised in rollback: {excep}")
                 raise SystemExit
 
             # Looking for entries that have sent == False
@@ -185,11 +185,11 @@ if __name__ == "__main__":
                         mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
                         mydb.commit()  # to make changes effective
                 except mysql.connector.Error as err:
-                    print("Exception raised!\n" + str(err))
+                    sys.stderr.write("Exception raised!\n" + str(err))
                     try:
                         mydb.rollback()
                     except Exception as exe:
-                        print(f"Exception raised in rollback: {exe}")
+                        sys.stderr.write(f"Exception raised in rollback: {exe}")
                     raise SystemExit  # to terminate without Kafka commit
 
                 # make commit
@@ -197,7 +197,7 @@ if __name__ == "__main__":
                     c.commit(asynchronous=True)
                     print("Commit done!")
                 except Exception as e:
-                    print("Error in commit!\n" + str(e))
+                    sys.stderr.write("Error in commit!\n" + str(e))
                     raise SystemExit
 
     except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop

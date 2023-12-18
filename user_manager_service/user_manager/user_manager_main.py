@@ -19,7 +19,7 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
                 row = cursor.fetchone()
                 email = row[0]
         except mysql.connector.Error as error:
-            print("Exception raised!\n" + str(error))
+            sys.stderr.write("Exception raised!\n{0}".format(str(error)))
             email = "null"
         return notifier_um_pb2.Reply(email=email)
 
@@ -69,11 +69,11 @@ if __name__ == '__main__':
             mycursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")  #TODO: to insert token JWT
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
-        print("Exception raised!\n" + str(err))
+        sys.stderr.write("Exception raised!\n" + str(err))
         try:
             mydb.rollback()
         except Exception as e:
-            print(f"Exception raised in rollback: {e}")
+            sys.stderr.write(f"Exception raised in rollback: {e}")
         sys.exit("User Manager terminating after an error...")
 
     print("Starting notifier serving thread !")

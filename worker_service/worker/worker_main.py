@@ -17,24 +17,27 @@ def make_query(query):
     try:
         resp = requests.get(url=query)
         resp.raise_for_status()
-        data = resp.json()
-        if data.get('cod') != 200:
-            raise Exception('Query failed: ' + data.get('message'))
-        print(json.dumps(data))
-        return data
-    except requests.JSONDecodeError as e:
-        print(f'JSON Decode error: {e}')
-    except requests.HTTPError as e:
-        print(f'HTTP Error: {e}')
-    except requests.exceptions.RequestException as e:
-        print(f'Request failed: {e}')
-    except Exception as e:
-        print(f'Error: {e}')
+        response = resp.json()
+        if response.get('cod') != 200:
+            raise Exception('Query failed: ' + response.get('message'))
+        print(json.dumps(response))
+        return response
+    except requests.JSONDecodeError as er:
+        sys.stderr.write(f'JSON Decode error: {er}')
+    except requests.HTTPError as er:
+        sys.stderr.write(f'HTTP Error: {er}')
+    except requests.exceptions.RequestException as er:
+        sys.stderr.write(f'Request failed: {er}')
+    except Exception as er:
+        sys.stderr.write(f'Error: {er}')
 
 
-# check values obtained from OpenWeather API call and put into the DB for recoverability from faults
-# returns the violated_rules to be sent in the form of a dictionary with key user_id
-# and value the list of (violated rule-current value) pairs
+# compare values obtained from OpenWeather API call with those that have been placed into the DB
+# for recoverability from faults that occur before to possibly publish violated rules
+# returns the violated rules to be sent in the form of a dictionary that contains many other
+# dictionary with key = user_id and value = the list of (violated rule-current value) pairs
+# there is another key-value pair in the outer dictionary with key = "location" and value = array
+# that contains information about the location in common for all the entries to be entered into the DB
 def check_rules(db_cursor, api_response):
     db_cursor.execute("SELECT rules FROM current_works")
     rules_list = db_cursor.fetchall()
@@ -61,8 +64,10 @@ def check_rules(db_cursor, api_response):
                 temp_dict[key] = api_response.get(key)
             user_violated_rules_list.append(temp_dict)
         event_dict[rules.get("user_id")] = user_violated_rules_list
-    event_dict['location'] = rules_list[0].get('location')
-    return json.dumps(event_dict)  # all entries in rules_list have the same location
+    json_location = rules_list[0][0]
+    dict_location = json.loads(json_location)
+    event_dict['location'] = dict_location.get('location')  # all entries in rules_list have the same location
+    return json.dumps(event_dict)
 
 
 # function to formatting data returned by OpenWeather API according to our business logic
@@ -93,7 +98,6 @@ def format_data(data):
         output_json_dict["snow"] = True
     else:
         output_json_dict["snow"] = False
-
     return output_json_dict
 
 
@@ -107,37 +111,41 @@ def find_current_works():
             db_cursor.execute("SELECT rules FROM current_works")
             results = db_cursor.fetchall()
             for row in results:
-                location = row[0].get('location')
+                dict_loc = json.loads(row[0])
+                location_info = dict_loc.get('location')
                 # make OpenWeather API call
                 apikey = os.environ.get('APIKEY')
-                rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location[1]}&lon={location[2]}&appid={apikey}"
+                rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_info[1]}&lon={location_info[2]}&appid={apikey}"
                 data = make_query(rest_call)
                 formatted_data = format_data(data)
                 events_to_be_sent = check_rules(db_cursor, formatted_data)
     except mysql.connector.Error as error:
-        print("Exception raised!\n" + str(error))
+        sys.stderr.write("Exception raised!\n" + str(error))
         try:
             db_conn.rollback()
         except Exception as ex:
-            print(f"Exception raised in rollback: {ex}")
+            sys.stderr.write(f"Exception raised in rollback: {ex}")
         return False
     return events_to_be_sent
 
 
-def produce_kafka_message(topic, producer_kafka, current_works):
+def produce_kafka_message(topic_name, kafka_producer, message):
     # Publish on the specific topic
     try:
-        producer_kafka.produce(topic, value=current_works, callback=delivery_callback)
+        producer_kafka.produce(topic_name, value=message, callback=delivery_callback)
     except BufferError:
         sys.stderr.write(
-            '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(producer_kafka))
+            '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
         return False
 
-    producer_kafka.poll(0)
+    kafka_producer.poll(0)
 
+    # TODO: maybe next two lines are to be inserted out of the function because these would make
+    #  the producer synchronous. Should it be synchronous???
     # Wait until all messages have been delivered
-    sys.stderr.write('%% Waiting for %d deliveries\n' % len(producer_kafka))
-    producer_kafka.flush()
+    sys.stderr.write('%% Waiting for %d deliveries\n' % len(kafka_producer))
+    kafka_producer.flush()
+
     return True
 
 
@@ -148,23 +156,23 @@ if __name__ == "__main__":
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
-            mycursor = mydb.cursor()
+            mycursor = mydb.cursor()  # TODO: why we need timestamp? Maybe for avoiding resending
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS currents_works (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
-        print("Exception raised!\n" + str(err))
+        sys.stderr.write("Exception raised!\n" + str(err))
         try:
             mydb.rollback()
         except Exception as exe:
-            print(f"Exception raised in rollback: {exe}")
+            sys.stderr.write(f"Exception raised in rollback: {exe}")
         sys.exit("Exiting...")
 
-    current_works, location = find_current_works()
+    current_works = find_current_works()
     if current_works == False:
         sys.exit("Exiting after error in fetching rules to send")
 
-    # Kafka producer initialization in order to publish in topic "event_to_be_sent"
+    # Kafka producer initialization in order to publish in topic "event_to_be_notified"
     broker = 'localhost:29092'
     topic = 'event_to_be_notified'
     conf = {'bootstrap.servers': broker, 'acks': 1}
@@ -178,6 +186,7 @@ if __name__ == "__main__":
     def delivery_callback(err, msg):
         if err:
             sys.stderr.write('%% Message failed delivery: %s\n' % err)
+            sys.exit("Exiting after error in delivery message to Kfka broker")
         else:
             sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
                              (msg.topic(), msg.partition(), msg.offset()))
@@ -189,11 +198,11 @@ if __name__ == "__main__":
                     mycursor.execute("DELETE * FROM current_works")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
-                print("Exception raised!\n" + str(err))
+                sys.stderr.write("Exception raised!\n" + str(err))
                 try:
                     mydb.rollback()
                 except Exception as exe:
-                    print(f"Exception raised in rollback: {exe}")
+                    sys.stderr.write(f"Exception raised in rollback: {exe}")
                 sys.exit("Exiting...")
 
 
@@ -210,7 +219,7 @@ if __name__ == "__main__":
     try:
         consumer_kafka.subscribe(['event_update'])  # the worker_service is also a Consumer related to the WMS Producer
     except confluent_kafka.KafkaException as ke:
-        print("Kafka exception raised!\n" + str(ke))
+        sys.stderr.write("Kafka exception raised!\n" + str(ke))
         consumer_kafka.close()
         sys.exit("Terminate after Exception raised in Kafka topic subscribe")
 
@@ -237,7 +246,7 @@ if __name__ == "__main__":
                 print(record_value)
                 data = json.loads(record_value)
 
-                # update current_works and location (if required) in DB
+                # update current_works in DB
                 userId_list = data.get("user_id")
                 loc = data.get('location')
                 for i in range(0, len(userId_list)):
@@ -255,29 +264,28 @@ if __name__ == "__main__":
                             mycursor.execute("INSERT INTO current_works (rules) VALUES (%s)", (json_to_insert,))
                             mydb.commit()  # to make changes effective
                     except mysql.connector.Error as err:
-                        print("Exception raised!\n" + str(err))
+                        sys.stderr.write("Exception raised!\n" + str(err))
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            print(f"Exception raised in rollback: {exe}")
+                            sys.stderr.write(f"Exception raised in rollback: {exe}")
                     sys.exit("Exiting...")
 
-            # Kafka commit
                 # make commit
                 try:
                     consumer_kafka.commit(asynchronous=True)
                     print("Commit done!")
                 except Exception as e:
-                    print("Error in commit!\n" + str(e))
+                    sys.stderr.write("Error in commit!\n" + str(e))
                     raise SystemExit
 
                 # call to find_current_works and publish them in topic "event_to_be_sent"
                 current_works = find_current_works()
-                result = produce_kafka_message(topic,producer_kafka,current_works)
+                result = produce_kafka_message(topic, producer_kafka, current_works)
                 if result == False:
-                    sys.stderr.write("Error")
-                    continue
-
+                    sys.stderr.write("Error in fetching rules to send")
+                # TODO: what happen if result == False? It would be better to restart with find
+                #  current works => maybe while True should start with find_current_works (?)
 
     except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop
         pass
