@@ -262,7 +262,7 @@ if __name__ == "__main__":
                                                      database=os.environ.get('DATABASE')) as mydb:
                             mycursor = mydb.cursor()
                             mycursor.execute("INSERT INTO current_works (rules) VALUES (%s)", (json_to_insert,))
-                            mydb.commit()  # to make changes effective
+                            mydb.commit()  # to make changes effective    TODO: timestamp ???
                     except mysql.connector.Error as err:
                         sys.stderr.write("Exception raised!\n" + str(err))
                         try:
