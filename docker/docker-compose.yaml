@@ -154,6 +154,7 @@ services:
       USER: "root"
       PASSWORD: /run/secrets/worker_DB_root_psw
       DATABASE: "worker"
+      APIKEY: /run/secrets/apikey
     networks:
       - wheather_network
     restart: always
