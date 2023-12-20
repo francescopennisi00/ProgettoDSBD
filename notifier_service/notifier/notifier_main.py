@@ -10,6 +10,7 @@ import mysql.connector
 import os
 import time
 import sys
+from datetime import datetime, timedelta
 
 
 def commit_completed(er):
@@ -140,14 +141,6 @@ if __name__ == "__main__":
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
-    secret_app_password_path = os.environ.get('APP_PASSWORD')
-    with open(secret_app_password_path, 'r') as file:
-        secret_app_password_value = file.read()
-    os.environ['APP_PASSWORD'] = secret_app_password_value
-    secret_email_path = os.environ.get('EMAIL')
-    with open(secret_email_path, 'r') as file:
-        secret_email_value = file.read()
-    os.environ['EMAIL'] = secret_email_value
 
     # start Kafka subscription
     c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka:29092', 'group.id': 'group1', 'enable.auto.commit': 'false', 'auto.offset.reset': 'latest', 'on_commit': commit_completed})
@@ -207,12 +200,20 @@ if __name__ == "__main__":
                 try:
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                         mycursor = mydb.cursor()
-                        for user_id in user_id_set:
-                            temp_dict = dict()
-                            temp_dict["violated_rules"] = data.get(user_id)
-                            violated_rules = json.dumps(temp_dict)  # TODO: manage duplicates with timestamp
-                            mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
-                        mydb.commit()  # to make changes effective after inserting ALL the violated_rules
+                        mycursor.execute("SELECT time_stamp FROM events")
+                        timestamp_list = mycursor.fetchone()
+                        if timestamp_list:
+                            timestamp_from_db = timestamp_list[0]
+                            current_timestamp = datetime.now()
+                            time_difference = current_timestamp - timestamp_from_db
+                            target_time_difference = timedelta(hours=1)
+                            if time_difference > target_time_difference:
+                                for user_id in user_id_set:
+                                    temp_dict = dict()
+                                    temp_dict["violated_rules"] = data.get(user_id)
+                                    violated_rules = json.dumps(temp_dict)
+                                    mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
+                                mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised!\n" + str(err))
                     try:
