@@ -176,14 +176,6 @@ if __name__ == "__main__":
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
-    secret_app_password_path = os.environ.get('APP_PASSWORD')
-    with open(secret_app_password_path, 'r') as file:
-        secret_app_password_value = file.read()
-    os.environ['APP_PASSWORD'] = secret_app_password_value
-    secret_email_path = os.environ.get('EMAIL')
-    with open(secret_email_path, 'r') as file:
-        secret_email_value = file.read()
-    os.environ['EMAIL'] = secret_email_value
 
     # create table current_work if not exists.
     # This table will contain many entries but all relating to the same message from the WMS
