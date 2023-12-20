@@ -111,14 +111,17 @@ def find_current_work():
             db_cursor = db_conn.cursor()
             db_cursor.execute("SELECT rules FROM current_work")
             result = db_cursor.fetchone()
-            dict_row = json.loads(result[0])
-            location_info = dict_row.get('location')  # all entries in current_works are related to the same location
-            # make OpenWeather API call
-            apikey = os.environ.get('APIKEY')
-            rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_info[1]}&lon={location_info[2]}&units=metric&appid={apikey}"
-            data = make_query(rest_call)
-            formatted_data = format_data(data)
-            events_to_be_sent = check_rules(db_cursor, formatted_data)
+            if result:
+                dict_row = json.loads(result[0])
+                location_info = dict_row.get('location')  # all entries in current_works are related to the same location
+                # make OpenWeather API call
+                apikey = os.environ.get('APIKEY')
+                rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_info[1]}&lon={location_info[2]}&units=metric&appid={apikey}"
+                data = make_query(rest_call)
+                formatted_data = format_data(data)
+                events_to_be_sent = check_rules(db_cursor, formatted_data)
+            else:
+                events_to_be_sent = "{}"
     except mysql.connector.Error as error:
         sys.stderr.write("Exception raised!\n" + str(error))
         try:
