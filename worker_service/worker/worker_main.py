@@ -108,7 +108,14 @@ def find_current_work():
         with (mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                       user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                       database=os.environ.get('DATABASE')) as db_conn):
-            db_cursor = db_conn.cursor()
+            # without a buffered cursor, the results are "lazily" loaded, meaning that "fetchone"
+            # actually only fetches one row from the full result set of the query.
+            # When you will use the same cursor again, it will complain that you still have
+            # n-1 results (where n is the result set amount) waiting to be fetched.
+            # However, when you use a buffered cursor the connector fetches ALL rows behind the scenes,
+            # and you just take one from the connector so the mysql db won't complain.
+            # buffered=True is needed because we next will use db_cursor as first parameter of check_rules
+            db_cursor = db_conn.cursor(buffered=True)
             db_cursor.execute("SELECT rules FROM current_work")
             result = db_cursor.fetchone()
             if result:
