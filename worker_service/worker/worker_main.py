@@ -64,7 +64,7 @@ def check_rules(db_cursor, api_response):
             elif key == "wind_direction" and rules_json.get(key) == api_response.get(key):
                 temp_dict[key] = api_response.get(key)
             user_violated_rules_list.append(temp_dict)
-        event_dict[rules.get("user_id")] = user_violated_rules_list
+        event_dict[rules_json.get("user_id")] = user_violated_rules_list
     json_location = rules_list[0][0]  # all entries in rules_list have the same location
     dict_location = json.loads(json_location)
     event_dict['location'] = dict_location.get('location')
