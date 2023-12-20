@@ -147,6 +147,7 @@ services:
       - "50002"
     secrets:
       - worker_DB_root_psw
+      - apikey
     environment:
       HOSTNAME: "worker_mysqlDB"
       PORT: 3306
@@ -181,3 +182,5 @@ secrets:
     file: um_DB_root_psw.txt
   worker_DB_root_psw:
     file: worker_DB_root_psw.txt
+  apikey:
+    file: apikey.txt
