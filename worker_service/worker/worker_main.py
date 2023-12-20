@@ -179,6 +179,10 @@ if __name__ == "__main__":
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
+    secret_apikey_path = os.environ.get('APIKEY')
+    with open(secret_apikey_path, 'r') as file:
+        secret_apikey_value = file.read()
+    os.environ['APIKEY'] = secret_apikey_value
 
     # create table current_work if not exists.
     # This table will contain many entries but all relating to the same message from the WMS
