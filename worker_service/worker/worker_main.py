@@ -115,7 +115,7 @@ def find_current_work():
             location_info = dict_row.get('location')  # all entries in current_works are related to the same location
             # make OpenWeather API call
             apikey = os.environ.get('APIKEY')
-            rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_info[1]}&lon={location_info[2]}&appid={apikey}"
+            rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_info[1]}&lon={location_info[2]}&units=metric&appid={apikey}"
             data = make_query(rest_call)
             formatted_data = format_data(data)
             events_to_be_sent = check_rules(db_cursor, formatted_data)
@@ -170,6 +170,8 @@ def produce_kafka_message(topic_name, kafka_producer, message):
 
 
 if __name__ == "__main__":
+
+    # TODO: env secrets
 
     # create table current_work if not exists.
     # This table will contain many entries but all relating to the same message from the WMS

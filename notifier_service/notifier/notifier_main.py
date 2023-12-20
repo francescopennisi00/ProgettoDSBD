@@ -51,13 +51,35 @@ def update_event_sent(event_id):
     return boolean_to_return
 
 
+def insert_rule_in_mail_text(rule, value, name_loc, country, state):
+    if rule == "max_temp" or rule == "min_temp":
+        return f"The temperature in {name_loc} ({country}, {state}) is {str(value)} °C!"
+    elif rule == "max_humidity" or rule == "min_humidity":
+        return f"The humidity in {name_loc} ({country}, {state}) is {str(value)} %!"
+    elif rule == "max_pressure" or rule == "min_pressure":
+        return f"The pressure in {name_loc} ({country}, {state}) is {str(value)} hPa!"
+    elif rule == "clouds_max" or rule == "clouds_min":
+        return f"The the percentage of sky covered by clouds in {name_loc} ({country}, {state}) is {str(value)} %"
+    elif rule == "max_wind_speed" or rule == "min_wind_speed":
+        return f"The wind speed in {name_loc} ({country}, {state}) is {str(value)} m/s!"
+    elif rule == "wind_direction":
+        return f"The wind direction in {name_loc} ({country}, {state}) is {value}!"
+    elif rule == "rain":
+        return f"Warning! In {name_loc} ({country}, {state}) is raining! Arm yourself with an umbrella!"
+    elif rule == "snow":
+        return f"Warning! In {name_loc} ({country}, {state}) is snowing! Be careful and enjoy the snow!"
+
+
 # send notification by email
-def send_email(email):
+def send_email(email, violated_rules, name_location, country, state):
     email_sender = os.environ.get('EMAIL')
     email_password = os.environ.get('APP_PASSWORD')
     email_receiver = email
-    subject = "Alert Notification!"
-    body = " messaggio di prova"  # TODO: da modificare con l'elenco delle rules violate (come parametro)
+    subject = "Weather Alert Notification! "
+    body = "Warning! Some weather parameters that you specified have been violated!\n\n"
+    rules_set = set(violated_rules.keys())
+    for rule in rules_set:
+        body += insert_rule_in_mail_text(rule, rules_set[rule], name_location, country, state)
     em = EmailMessage()
     em['From'] = email_sender
     em['To'] = email_receiver
@@ -88,7 +110,11 @@ def find_event_not_sent():
                 cursor.close()
                 db.close()
                 return False
-            res = send_email(email)  #TODO: other params required
+            loc_name = x[2]
+            loc_country = x[3]
+            loc_state = x[4]
+            violated_rules = json.loads(x[5])
+            res = send_email(email, violated_rules, loc_name, loc_country, loc_state)
             if res != True:
                 cursor.close()
                 db.close()
@@ -138,10 +164,7 @@ if __name__ == "__main__":
             try:
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     mycursor = mydb.cursor()
-                    # TODO: e' necessaria la location id o il nome della localita'? Anche il notifier
-                    # TODO: ha la tabella locations o le informazioni sulla localita' gli vengono
-                    # TODO: fornite? Rispondere dopo aver completato il worker!
-                    mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
+                    mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_name INTEGER NOT NULL, location_country VARCHAR(10) NOT NULL, location_state VARCHAR(30) NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
                 sys.stderr.write("Exception raised!\n" + str(err))
@@ -175,17 +198,21 @@ if __name__ == "__main__":
                 record_value = msg.value()
                 print(record_value)
                 data = json.loads(record_value)
-                # TODO: to reiviewed after completing the worker
-                userId = data['user_id']
-                location = data['location_id']
-                violated_rules = data['violated_rules']
-
-                # connection with DB and store event to be notified
+                location_name = data.get("location")[0]
+                location_country = data.get("location")[3]
+                location_state = data.get("location")[4]
+                del data["location"]
+                user_id_set = set(data.keys())
+                # connection with DB and store events to be notified
                 try:
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                         mycursor = mydb.cursor()
-                        mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s)", (str(userId), str(location), str(violated_rules), "CURRENT_TIMESTAMP()", "FALSE"))
-                        mydb.commit()  # to make changes effective
+                        for user_id in user_id_set:
+                            temp_dict = dict()
+                            temp_dict["violated_rules"] = data.get(user_id)
+                            violated_rules = json.dumps(temp_dict)  # TODO: manage duplicates with timestamp
+                            mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
+                        mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised!\n" + str(err))
                     try:
