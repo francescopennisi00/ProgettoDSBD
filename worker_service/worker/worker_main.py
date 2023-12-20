@@ -91,11 +91,11 @@ def format_data(data):
             output_json_dict["wind_direction"] = direction_list[j]
             break
         j = j + 1
-    if data["weather"]["main"] == "Rain":
+    if data["weather"][0]["main"] == "Rain":
         output_json_dict["rain"] = True
     else:
         output_json_dict["rain"] = False
-    if data["weather"]["main"] == "Snow":
+    if data["weather"][0]["main"] == "Snow":
         output_json_dict["snow"] = True
     else:
         output_json_dict["snow"] = False
