@@ -85,10 +85,12 @@ def find_event_not_sent():
         for x in results:
             email = fetch_email(x[1])
             if email == "null":
+                cursor.close()
                 db.close()
                 return False
             res = send_email(email)  #TODO: other params required
             if res != True:
+                cursor.close()
                 db.close()
                 return False
             # we give 5 attempts to try to update the DB in order

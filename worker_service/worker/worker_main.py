@@ -4,6 +4,7 @@ import mysql.connector
 import os
 import sys
 import requests
+from datetime import datetime, timedelta
 
 
 def commit_completed(er):
@@ -39,7 +40,7 @@ def make_query(query):
 # there is another key-value pair in the outer dictionary with key = "location" and value = array
 # that contains information about the location in common for all the entries to be entered into the DB
 def check_rules(db_cursor, api_response):
-    db_cursor.execute("SELECT rules FROM current_works")
+    db_cursor.execute("SELECT rules FROM current_work")
     rules_list = db_cursor.fetchall()
     event_dict = dict()
     for rules in rules_list:
@@ -64,9 +65,9 @@ def check_rules(db_cursor, api_response):
                 temp_dict[key] = api_response.get(key)
             user_violated_rules_list.append(temp_dict)
         event_dict[rules.get("user_id")] = user_violated_rules_list
-    json_location = rules_list[0][0]
+    json_location = rules_list[0][0]  # all entries in rules_list have the same location
     dict_location = json.loads(json_location)
-    event_dict['location'] = dict_location.get('location')  # all entries in rules_list have the same location
+    event_dict['location'] = dict_location.get('location')
     return json.dumps(event_dict)
 
 
@@ -102,13 +103,13 @@ def format_data(data):
 
 
 # function for recovering unchecked rules when worker goes down before publishing notification event
-def find_current_works():
+def find_current_work():
     try:
         with (mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                       user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                       database=os.environ.get('DATABASE')) as db_conn):
             db_cursor = db_conn.cursor()
-            db_cursor.execute("SELECT rules FROM current_works")
+            db_cursor.execute("SELECT rules FROM current_work")
             results = db_cursor.fetchall()
             for row in results:
                 dict_loc = json.loads(row[0])
@@ -129,6 +130,32 @@ def find_current_works():
     return events_to_be_sent
 
 
+# Optional per-message delivery callback (triggered by poll() or flush())
+# when a message has been successfully delivered or permanently
+# failed delivery (after retries).
+def delivery_callback(err, msg):
+    if err:
+        sys.stderr.write('%% Message failed delivery: %s\n' % err)
+        raise SystemExit("Exiting after error in delivery message to Kafka broker")
+    else:
+        sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
+                         (msg.topic(), msg.partition(), msg.offset()))
+        try:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                         user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                         database=os.environ.get('DATABASE')) as mydb:
+                mycursor = mydb.cursor()
+                mycursor.execute("DELETE * FROM current_work")
+                mydb.commit()  # to make changes effective
+        except mysql.connector.Error as err:
+            sys.stderr.write("Exception raised!\n" + str(err))
+            try:
+                mydb.rollback()
+            except Exception as exe:
+                sys.stderr.write(f"Exception raised in rollback: {exe}")
+            raise SystemExit
+
+
 def produce_kafka_message(topic_name, kafka_producer, message):
     # Publish on the specific topic
     try:
@@ -137,28 +164,24 @@ def produce_kafka_message(topic_name, kafka_producer, message):
         sys.stderr.write(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
         return False
-
-    kafka_producer.poll(0)
-
-    # TODO: maybe next two lines are to be inserted out of the function because these would make
-    #  the producer synchronous. Should it be synchronous???
-    # Wait until all messages have been delivered
-    sys.stderr.write('%% Waiting for %d deliveries\n' % len(kafka_producer))
+    # Wait until the message have been delivered
+    sys.stderr.write("Waiting for message to be delivered")
     kafka_producer.flush()
-
     return True
 
 
 if __name__ == "__main__":
 
-    # create table current_works if not exists
+    # create table current_work if not exists.
+    # This table will contain many entries but all relating to the same message from the WMS
+    # and therefore all with the same location
     try:
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
-            mycursor = mydb.cursor()  # TODO: why we need timestamp? Maybe for avoiding resending
+            mycursor = mydb.cursor()
             mycursor.execute(
-                "CREATE TABLE IF NOT EXISTS currents_works (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
+                "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised!\n" + str(err))
@@ -168,8 +191,8 @@ if __name__ == "__main__":
             sys.stderr.write(f"Exception raised in rollback: {exe}")
         sys.exit("Exiting...")
 
-    current_works = find_current_works()
-    if current_works == False:
+    current_work = find_current_work()
+    if current_work == False:
         sys.exit("Exiting after error in fetching rules to send")
 
     # Kafka producer initialization in order to publish in topic "event_to_be_notified"
@@ -180,35 +203,10 @@ if __name__ == "__main__":
     # Create Producer instance
     producer_kafka = confluent_kafka.Producer(**conf)
 
-    # Optional per-message delivery callback (triggered by poll() or flush())
-    # when a message has been successfully delivered or permanently
-    # failed delivery (after retries).
-    def delivery_callback(err, msg):
-        if err:
-            sys.stderr.write('%% Message failed delivery: %s\n' % err)
-            sys.exit("Exiting after error in delivery message to Kfka broker")
-        else:
-            sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
-                             (msg.topic(), msg.partition(), msg.offset()))
-            try:
-                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
-                                             user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
-                                             database=os.environ.get('DATABASE')) as mydb:
-                    mycursor = mydb.cursor()
-                    mycursor.execute("DELETE * FROM current_works")
-                    mydb.commit()  # to make changes effective
-            except mysql.connector.Error as err:
-                sys.stderr.write("Exception raised!\n" + str(err))
-                try:
-                    mydb.rollback()
-                except Exception as exe:
-                    sys.stderr.write(f"Exception raised in rollback: {exe}")
-                sys.exit("Exiting...")
-
-
-    # check if current works are pending and if it is true publish them to Kafka
-    if current_works != '{}':  # JSON representation of an empty dictionary.
-        produce_kafka_message(topic, producer_kafka, current_works)
+    # check if current work is pending and if it is true publish the rules to Kafka
+    if current_work != '{}':  # JSON representation of an empty dictionary.
+        while produce_kafka_message(topic, producer_kafka, current_work) == False:
+            pass
     else:
         print("There is no backlog of work")
 
@@ -246,30 +244,41 @@ if __name__ == "__main__":
                 print(record_value)
                 data = json.loads(record_value)
 
-                # update current_works in DB
+                # update current_work in DB
                 userId_list = data.get("user_id")
                 loc = data.get('location')
-                for i in range(0, len(userId_list)):
-                    temp_dict = dict()
-                    for key in set(data.keys()):
-                        if key != "location":
-                            temp_dict[key] = data.get(key)[i]
-                    temp_dict['location'] = loc
-                    json_to_insert = json.dumps(temp_dict)
+                try:
+                    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                 user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                 database=os.environ.get('DATABASE')) as mydb:
+                        # if the WMS is replicated and another message arrives identical to the one
+                        # that has already arrived and for which the relevant entries have already
+                        # been inserted in the table, no further insertion is made
+                        mycursor = mydb.cursor()
+                        mycursor.execute("SELECT time_stamp FROM current_work")
+                        timestamp_list = mycursor.fetchone()
+                        if timestamp_list:
+                            timestamp_from_db = timestamp_list[0]
+                            current_timestamp = datetime.now()
+                            time_difference = current_timestamp - timestamp_from_db
+                            target_time_difference = timedelta(hours=1)
+                            if time_difference > target_time_difference:
+                                for i in range(0, len(userId_list)):
+                                    temp_dict = dict()
+                                    for key in set(data.keys()):
+                                        if key != "location":
+                                            temp_dict[key] = data.get(key)[i]
+                                    temp_dict['location'] = loc
+                                    json_to_insert = json.dumps(temp_dict)
+                                    mycursor.execute("INSERT INTO current_work (rules, time_stamp) VALUES (%s, %s)", (json_to_insert,"CURRENT_TIMESTAMP()"))
+                                mydb.commit()  # to make changes effective after inserting rules for ALL the users
+                except mysql.connector.Error as err:
+                    sys.stderr.write("Exception raised!\n" + str(err))
                     try:
-                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
-                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
-                                                     database=os.environ.get('DATABASE')) as mydb:
-                            mycursor = mydb.cursor()
-                            mycursor.execute("INSERT INTO current_works (rules) VALUES (%s)", (json_to_insert,))
-                            mydb.commit()  # to make changes effective    TODO: timestamp ???
-                    except mysql.connector.Error as err:
-                        sys.stderr.write("Exception raised!\n" + str(err))
-                        try:
-                            mydb.rollback()
-                        except Exception as exe:
-                            sys.stderr.write(f"Exception raised in rollback: {exe}")
-                    sys.exit("Exiting...")
+                        mydb.rollback()
+                    except Exception as exe:
+                        sys.stderr.write(f"Exception raised in rollback: {exe}")
+                    raise SystemExit
 
                 # make commit
                 try:
@@ -279,13 +288,11 @@ if __name__ == "__main__":
                     sys.stderr.write("Error in commit!\n" + str(e))
                     raise SystemExit
 
-                # call to find_current_works and publish them in topic "event_to_be_sent"
-                current_works = find_current_works()
-                result = produce_kafka_message(topic, producer_kafka, current_works)
-                if result == False:
-                    sys.stderr.write("Error in fetching rules to send")
-                # TODO: what happen if result == False? It would be better to restart with find
-                #  current works => maybe while True should start with find_current_works (?)
+                # call to find_current_work and publish them in topic "event_to_be_sent"
+                current_work = find_current_work()
+                if current_work != '{}':  # JSON representation of an empty dictionary.
+                    while produce_kafka_message(topic, producer_kafka, current_work) == False:
+                        pass
 
     except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop
         pass
