@@ -11,9 +11,9 @@ def commit_completed(er, partitions):
     if er:
         print(str(er))
     else:
-        print("Commit done!")
-        print("Committed partition offsets: " + str(partitions))
-        print("Notification fetched and stored in DB in order to be sent!")
+        print("Commit done!\n")
+        print("Committed partition offsets: " + str(partitions) + "\n")
+        print("Rules fetched and stored in DB in order to save current work!\n")
 
 
 def make_query(query):
@@ -23,16 +23,16 @@ def make_query(query):
         response = resp.json()
         if response.get('cod') != 200:
             raise Exception('Query failed: ' + response.get('message'))
-        print(json.dumps(response))
+        print(json.dumps(response) + "\n")
         return response
     except requests.JSONDecodeError as er:
-        sys.stderr.write(f'JSON Decode error: {er}')
+        sys.stderr.write(f'JSON Decode error: {er}\n')
     except requests.HTTPError as er:
-        sys.stderr.write(f'HTTP Error: {er}')
+        sys.stderr.write(f'HTTP Error: {er}\n')
     except requests.exceptions.RequestException as er:
-        sys.stderr.write(f'Request failed: {er}')
+        sys.stderr.write(f'Request failed: {er}\n')
     except Exception as er:
-        sys.stderr.write(f'Error: {er}')
+        sys.stderr.write(f'Error: {er}\n')
 
 
 # compare values obtained from OpenWeather API call with those that have been placed into the DB
@@ -132,11 +132,11 @@ def find_current_work():
             else:
                 events_to_be_sent = "{}"
     except mysql.connector.Error as error:
-        sys.stderr.write("Exception raised!\n" + str(error))
+        sys.stderr.write("Exception raised! -> " + str(error) + "\n")
         try:
             db_conn.rollback()
         except Exception as ex:
-            sys.stderr.write(f"Exception raised in rollback: {ex}")
+            sys.stderr.write(f"Exception raised in rollback: {ex}\n")
         return False
     return events_to_be_sent
 
@@ -147,7 +147,7 @@ def find_current_work():
 def delivery_callback(err, msg):
     if err:
         sys.stderr.write('%% Message failed delivery: %s\n' % err)
-        raise SystemExit("Exiting after error in delivery message to Kafka broker")
+        raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
     else:
         sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
@@ -163,7 +163,7 @@ def delivery_callback(err, msg):
             try:
                 mydb.rollback()
             except Exception as exe:
-                sys.stderr.write(f"Exception raised in rollback: {exe}")
+                sys.stderr.write(f"Exception raised in rollback: {exe}\n")
             raise SystemExit
 
 
@@ -176,7 +176,7 @@ def produce_kafka_message(topic_name, kafka_producer, message):
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
         return False
     # Wait until the message have been delivered
-    sys.stderr.write("Waiting for message to be delivered")
+    sys.stderr.write("Waiting for message to be delivered\n")
     kafka_producer.flush()
     return True
 
@@ -205,16 +205,16 @@ if __name__ == "__main__":
                 "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
-        sys.stderr.write("Exception raised!\n" + str(err))
+        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:
             mydb.rollback()
         except Exception as exe:
-            sys.stderr.write(f"Exception raised in rollback: {exe}")
-        sys.exit("Exiting...")
+            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+        sys.exit("Exiting...\n")
 
     current_work = find_current_work()
     if current_work == False:
-        sys.exit("Exiting after error in fetching rules to send")
+        sys.exit("Exiting after error in fetching rules to send\n")
 
     # Kafka producer initialization in order to publish in topic "event_to_be_notified"
     broker = 'kafka:9092'
@@ -229,7 +229,7 @@ if __name__ == "__main__":
         while produce_kafka_message(topic, producer_kafka, current_work) == False:
             pass
     else:
-        print("There is no backlog of work")
+        print("There is no backlog of work\n")
 
     # start Kafka subscription
     consumer_kafka = confluent_kafka.Consumer(
@@ -238,9 +238,9 @@ if __name__ == "__main__":
     try:
         consumer_kafka.subscribe(['event_update'])  # the worker_service is also a Consumer related to the WMS Producer
     except confluent_kafka.KafkaException as ke:
-        sys.stderr.write("Kafka exception raised!\n" + str(ke))
+        sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
         consumer_kafka.close()
-        sys.exit("Terminate after Exception raised in Kafka topic subscribe")
+        sys.exit("Terminate after Exception raised in Kafka topic subscribe\n")
 
     try:
         while True:
@@ -251,10 +251,10 @@ if __name__ == "__main__":
                 # Initial message consumption may take up to
                 # `session.timeout.ms` for the consumer group to
                 # rebalance and start consuming
-                print("Waiting for message or event/error in poll()")
+                print("Waiting for message or event/error in poll()\n")
                 continue
             elif msg.error():
-                print('error: {}'.format(msg.error()))
+                print('error: {}\n'.format(msg.error()))
                 if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
                     raise SystemExit
             else:
@@ -294,18 +294,18 @@ if __name__ == "__main__":
                                     mycursor.execute("INSERT INTO current_work (rules, time_stamp) VALUES (%s, %s)", (json_to_insert,"CURRENT_TIMESTAMP()"))
                                 mydb.commit()  # to make changes effective after inserting rules for ALL the users
                 except mysql.connector.Error as err:
-                    sys.stderr.write("Exception raised!\n" + str(err))
+                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
                     try:
                         mydb.rollback()
                     except Exception as exe:
-                        sys.stderr.write(f"Exception raised in rollback: {exe}")
+                        sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                     raise SystemExit
 
                 # make commit
                 try:
                     consumer_kafka.commit(asynchronous=True)
                 except Exception as e:
-                    sys.stderr.write("Error in commit!\n" + str(e))
+                    sys.stderr.write("Error in commit! -> " + str(e) + "\n")
                     raise SystemExit
 
                 # call to find_current_work and publish them in topic "event_to_be_sent"
