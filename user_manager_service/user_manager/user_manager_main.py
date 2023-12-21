@@ -19,7 +19,7 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
                 row = cursor.fetchone()
                 email = row[0]
         except mysql.connector.Error as error:
-            sys.stderr.write("Exception raised!\n{0}".format(str(error)))
+            sys.stderr.write("Exception raised! -> {0}".format(str(error)))
             email = "null"
         return notifier_um_pb2.Reply(email=email)
 
@@ -30,7 +30,7 @@ def serve_notifier():
     notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    print("Notifier thread server started, listening on " + port)
+    print("Notifier thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -40,7 +40,7 @@ def serve_wms():
     notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    print("WMS thread server started, listening on " + port)
+    print("WMS thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -50,7 +50,7 @@ def serve_apigateway():
     notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    print("API Gateway server started, listening on " + port)
+    print("API Gateway server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -69,16 +69,16 @@ if __name__ == '__main__':
             mycursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")  #TODO: to insert token JWT
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
-        sys.stderr.write("Exception raised!\n" + str(err))
+        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:
             mydb.rollback()
         except Exception as e:
-            sys.stderr.write(f"Exception raised in rollback: {e}")
-        sys.exit("User Manager terminating after an error...")
+            sys.stderr.write(f"Exception raised in rollback: {e}\n")
+        sys.exit("User Manager terminating after an error...\n")
 
-    print("Starting notifier serving thread !")
+    print("Starting notifier serving thread!\n")
     threadNotifier = threading.Thread(target=serve_notifier())
-    print("Starting WMS serving thread!")
+    print("Starting WMS serving thread!\n")
     threadWMS = threading.Thread(target=serve_wms())
-    print("Starting API Gateway serving thread!")
+    print("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway())
