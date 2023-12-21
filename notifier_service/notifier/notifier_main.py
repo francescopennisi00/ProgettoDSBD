@@ -17,9 +17,9 @@ def commit_completed(er,partitions):
     if er:
         print(str(er))
     else:
-        print("Commit done!")
-        print("Committed partition offsets: " + str(partitions))
-        print("Notification fetched and stored in DB in order to be sent!")
+        print("Commit done!\n")
+        print("Committed partition offsets: " + str(partitions) + "\n")
+        print("Notification fetched and stored in DB in order to be sent!\n")
 
 
 # communication with user management in order to get user email
@@ -28,10 +28,10 @@ def fetch_email(userid):
         with grpc.insecure_channel('um_service:50051') as channel:
             stub = notifier_um_pb2_grpc.NotifierUmStub(channel)
             response = stub.RequestEmail(notifier_um_pb2.Request(user_id=userid))
-            print("Fetched email: " + response.email)
+            print("Fetched email: " + response.email + "\n")
             email_to_return = response.email
     except grpc.RpcError as error:
-        sys.stderr.write("gRPC error!\n" + str(error))
+        sys.stderr.write("gRPC error! -> " + str(error) + "\n")
         email_to_return = "null"
     return email_to_return
 
@@ -45,32 +45,32 @@ def update_event_sent(event_id):
             db.commit()
             boolean_to_return = True
     except mysql.connector.Error as error:
-        sys.stderr.write("Exception raised!\n" + str(error))
+        sys.stderr.write("Exception raised! -> " + str(error) + "\n")
         boolean_to_return = False
         try:
             db.rollback()
         except Exception as exc:
-            sys.stderr.write(f"Exception raised in rollback: {exc}")
+            sys.stderr.write(f"Exception raised in rollback: {exc}\n")
     return boolean_to_return
 
 
 def insert_rule_in_mail_text(rule, value, name_loc, country, state):
     if rule == "max_temp" or rule == "min_temp":
-        return f"The temperature in {name_loc} ({country}, {state}) is {str(value)} °C!"
+        return f"The temperature in {name_loc} ({country}, {state}) is {str(value)} °C!\n"
     elif rule == "max_humidity" or rule == "min_humidity":
-        return f"The humidity in {name_loc} ({country}, {state}) is {str(value)} %!"
+        return f"The humidity in {name_loc} ({country}, {state}) is {str(value)} %!\n"
     elif rule == "max_pressure" or rule == "min_pressure":
-        return f"The pressure in {name_loc} ({country}, {state}) is {str(value)} hPa!"
+        return f"The pressure in {name_loc} ({country}, {state}) is {str(value)} hPa!\n"
     elif rule == "clouds_max" or rule == "clouds_min":
-        return f"The the percentage of sky covered by clouds in {name_loc} ({country}, {state}) is {str(value)} %"
+        return f"The the percentage of sky covered by clouds in {name_loc} ({country}, {state}) is {str(value)} %\n"
     elif rule == "max_wind_speed" or rule == "min_wind_speed":
-        return f"The wind speed in {name_loc} ({country}, {state}) is {str(value)} m/s!"
+        return f"The wind speed in {name_loc} ({country}, {state}) is {str(value)} m/s!\n"
     elif rule == "wind_direction":
-        return f"The wind direction in {name_loc} ({country}, {state}) is {value}!"
+        return f"The wind direction in {name_loc} ({country}, {state}) is {value}!\n"
     elif rule == "rain":
-        return f"Warning! In {name_loc} ({country}, {state}) is raining! Arm yourself with an umbrella!"
+        return f"Warning! In {name_loc} ({country}, {state}) is raining! Arm yourself with an umbrella!\n"
     elif rule == "snow":
-        return f"Warning! In {name_loc} ({country}, {state}) is snowing! Be careful and enjoy the snow!"
+        return f"Warning! In {name_loc} ({country}, {state}) is snowing! Be careful and enjoy the snow!\n"
 
 
 # send notification by email
@@ -95,7 +95,7 @@ def send_email(email, violated_rules, name_location, country, state):
             smtp.sendmail(email_sender, email_receiver, em.as_string())
             boolean_to_return = True
     except smtplib.SMTPException as exception:
-        sys.stderr.write("SMTP protocol error!\n" + str(exception))
+        sys.stderr.write("SMTP protocol error! -> " + str(exception) + "\n")
         boolean_to_return = False
     return boolean_to_return
 
@@ -132,7 +132,7 @@ def find_event_not_sent():
                 raise SystemExit
 
     except mysql.connector.Error as error:
-        sys.stderr.write("Exception raised!\n" + str(error))
+        sys.stderr.write("Exception raised! -> " + str(error) +"\n")
         raise SystemExit
 
 
@@ -157,9 +157,9 @@ if __name__ == "__main__":
     try:
         c.subscribe(['event_to_be_notified'])
     except confluent_kafka.KafkaException as ke:
-        sys.stderr.write("Kafka exception raised!\n" + str(ke))
+        sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
         c.close()
-        sys.exit("Terminate after Exception raised in Kafka topic subscribe")
+        sys.exit("Terminate after Exception raised in Kafka topic subscribe\n")
 
     try:
         while True:
@@ -170,11 +170,11 @@ if __name__ == "__main__":
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_name INTEGER NOT NULL, location_country VARCHAR(10) NOT NULL, location_state VARCHAR(30) NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
-                sys.stderr.write("Exception raised!\n" + str(err))
+                sys.stderr.write("Exception raised! -> " + str(err) +"\n")
                 try:
                     mydb.rollback()
                 except Exception as excep:
-                    sys.stderr.write(f"Exception raised in rollback: {excep}")
+                    sys.stderr.write(f"Exception raised in rollback: {excep}\n")
                 raise SystemExit
 
             # Looking for entries that have sent == False
@@ -188,10 +188,10 @@ if __name__ == "__main__":
                 # Initial message consumption may take up to
                 # `session.timeout.ms` for the consumer group to
                 # rebalance and start consuming
-                print("Waiting for message or event/error in poll()")
+                print("Waiting for message or event/error in poll()\n")
                 continue
             elif msg.error():
-                print('error: {}'.format(msg.error()))
+                print('error: {}\n'.format(msg.error()))
                 if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
                     raise SystemExit
             else:
@@ -225,18 +225,18 @@ if __name__ == "__main__":
                                     mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
                                 mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
-                    sys.stderr.write("Exception raised!\n" + str(err))
+                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
                     try:
                         mydb.rollback()
                     except Exception as exe:
-                        sys.stderr.write(f"Exception raised in rollback: {exe}")
+                        sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                     raise SystemExit  # to terminate without Kafka commit
 
                 # make commit
                 try:
                     c.commit(asynchronous=True)
                 except Exception as e:
-                    sys.stderr.write("Error in commit!\n" + str(e))
+                    sys.stderr.write("Error in commit! -> " + str(e) +"\n")
                     raise SystemExit
 
     except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop
