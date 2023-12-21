@@ -1,4 +1,5 @@
 import confluent_kafka
+from confluent_kafka.admin import AdminClient, NewTopic
 import json
 import mysql.connector
 import os
@@ -216,13 +217,26 @@ if __name__ == "__main__":
     if current_work == False:
         sys.exit("Exiting after error in fetching rules to send\n")
 
-    # Kafka producer initialization in order to publish in topic "event_to_be_notified"
+    # Kafka admin and producer initialization in order to publish in topic "event_to_be_notified"
     broker = 'kafka:9092'
     topic = 'event_to_be_notified'
-    conf = {'bootstrap.servers': broker, 'acks': 1}
+    producer_conf = {'bootstrap.servers': broker, 'acks': 1}
+    admin_conf = {'bootstrap.servers': broker}
+    kadmin = AdminClient(admin_conf)
+
+    # Create topic "event_to_be_notified" if not exists
+    topics = kadmin.list_topics().topics  # Returns a dict()
+    topic_names = set(topics.keys())
+    found = False
+    for name in topic_names:
+        if name == topic:
+            found = True
+    if found == False:
+        new_topic = NewTopic(topic, 1, 1)  # Number-of-partitions = 1, Number-of-replicas = 1
+        kadmin.create_topics([new_topic,])
 
     # Create Producer instance
-    producer_kafka = confluent_kafka.Producer(**conf)
+    producer_kafka = confluent_kafka.Producer(**producer_conf)
 
     # check if current work is pending and if it is true publish the rules to Kafka
     if current_work != '{}':  # JSON representation of an empty dictionary.
