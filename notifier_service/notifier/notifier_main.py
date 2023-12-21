@@ -1,4 +1,5 @@
 import confluent_kafka
+from confluent_kafka.admin import AdminClient
 import json
 import grpc
 import notifier_um_pb2
@@ -152,10 +153,20 @@ if __name__ == "__main__":
         secret_email_value = file.read()
     os.environ['EMAIL'] = secret_email_value
 
-    # start Kafka subscription
+    # start Kafka subscription (if "event_to_be_notified" exists, else exit)
     c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka:9092', 'group.id': 'group1', 'enable.auto.commit': 'false', 'auto.offset.reset': 'latest', 'on_commit': commit_completed})
     try:
-        c.subscribe(['event_to_be_notified'])
+        admin_conf = {'bootstrap.servers': 'kafka:9092'}
+        kadmin = AdminClient(admin_conf)
+        topics = kadmin.list_topics().topics  # Returns a dict()
+        topic_names = set(topics.keys())
+        found = False
+        for name in topic_names:
+            if name == "event_to_be_notified":
+                found = True
+                c.subscribe(['event_to_be_notified'])
+        if found == False:
+            sys.exit("Terminate because Kafka topic to subscribe has been not found\n")
     except confluent_kafka.KafkaException as ke:
         sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
         c.close()
