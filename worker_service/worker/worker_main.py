@@ -215,7 +215,7 @@ if __name__ == "__main__":
         sys.exit("Exiting after error in fetching rules to send")
 
     # Kafka producer initialization in order to publish in topic "event_to_be_notified"
-    broker = 'kafka:29092'
+    broker = 'kafka:9092'
     topic = 'event_to_be_notified'
     conf = {'bootstrap.servers': broker, 'acks': 1}
 
@@ -231,7 +231,7 @@ if __name__ == "__main__":
 
     # start Kafka subscription
     consumer_kafka = confluent_kafka.Consumer(
-        {'bootstrap.servers': 'kafka:29092', 'group.id': 'group2', 'enable.auto.commit': 'false',
+        {'bootstrap.servers': 'kafka:9092', 'group.id': 'group2', 'enable.auto.commit': 'false',
          'auto.offset.reset': 'latest', 'on_commit': commit_completed})
     try:
         consumer_kafka.subscribe(['event_update'])  # the worker_service is also a Consumer related to the WMS Producer
