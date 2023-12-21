@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timedelta
 
 
-def commit_completed(er,partitions):
+def commit_completed(er, partitions):
     if er:
         print(str(er))
     else:
@@ -82,7 +82,7 @@ def send_email(email, violated_rules, name_location, country, state):
     body = "Warning! Some weather parameters that you specified have been violated!\n\n"
     rules_set = set(violated_rules.keys())
     for rule in rules_set:
-        body += insert_rule_in_mail_text(rule, rules_set[rule], name_location, country, state)
+        body += insert_rule_in_mail_text(rule, violated_rules[rule], name_location, country, state)
     em = EmailMessage()
     em['From'] = email_sender
     em['To'] = email_receiver
