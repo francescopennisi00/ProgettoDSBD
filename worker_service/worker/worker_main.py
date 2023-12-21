@@ -215,7 +215,7 @@ if __name__ == "__main__":
         sys.exit("Exiting after error in fetching rules to send")
 
     # Kafka producer initialization in order to publish in topic "event_to_be_notified"
-    broker = 'localhost:29092'
+    broker = 'kafka:29092'
     topic = 'event_to_be_notified'
     conf = {'bootstrap.servers': broker, 'acks': 1}
 
