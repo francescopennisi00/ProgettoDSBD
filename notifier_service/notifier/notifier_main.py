@@ -13,10 +13,12 @@ import sys
 from datetime import datetime, timedelta
 
 
-def commit_completed(er):
+def commit_completed(er,partitions):
     if er:
         print(str(er))
     else:
+        print("Commit done!")
+        print("Committed partition offsets: " + str(partitions))
         print("Notification fetched and stored in DB in order to be sent!")
 
 
@@ -233,7 +235,6 @@ if __name__ == "__main__":
                 # make commit
                 try:
                     c.commit(asynchronous=True)
-                    print("Commit done!")
                 except Exception as e:
                     sys.stderr.write("Error in commit!\n" + str(e))
                     raise SystemExit
