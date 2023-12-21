@@ -122,7 +122,7 @@ def find_event_not_sent():
             if res != True:
                 cursor.close()
                 db.close()
-                return False
+                return "error_in_send_email"
             # we give 5 attempts to try to update the DB in order
             # to avoid resending the email as much as possible
             for t in range(5):
@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
             # Looking for entries that have sent == False
             result = find_event_not_sent()
-            if result == False:
+            if result == "error_in_send_email":
                 continue
 
             msg = c.poll(timeout=5.0)
