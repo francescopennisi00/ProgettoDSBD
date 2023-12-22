@@ -126,6 +126,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD_FILE: /run/secrets/worker_DB_root_psw
       MYSQL_DATABASE: worker
+      WORKERID: 1
     volumes:
       - worker_volume:/var/lib/mysql
     expose:

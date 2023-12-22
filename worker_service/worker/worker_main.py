@@ -43,7 +43,7 @@ def make_query(query):
 # there is another key-value pair in the outer dictionary with key = "location" and value = array
 # that contains information about the location in common for all the entries to be entered into the DB
 def check_rules(db_cursor, api_response):
-    db_cursor.execute("SELECT rules FROM current_work")
+    db_cursor.execute("SELECT rules FROM current_work WHERE worker_id = %s", (str(worker_id),))
     rules_list = db_cursor.fetchall()
     event_dict = dict()
     for rules in rules_list:
@@ -119,7 +119,7 @@ def find_current_work():
             # and you just take one from the connector so the mysql db won't complain.
             # buffered=True is needed because we next will use db_cursor as first parameter of check_rules
             db_cursor = db_conn.cursor(buffered=True)
-            db_cursor.execute("SELECT rules FROM current_work")
+            db_cursor.execute("SELECT rules FROM current_work WHERE worker_id = %s", (str(worker_id),))
             result = db_cursor.fetchone()
             if result:
                 dict_row = json.loads(result[0])
@@ -157,7 +157,7 @@ def delivery_callback(err, msg):
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as mydb:
                 mycursor = mydb.cursor()
-                mycursor.execute("DELETE FROM current_work")
+                mycursor.execute("DELETE FROM current_work WHERE worker_id = %s", (str(worker_id),))
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
             sys.stderr.write("Exception raised!\n" + str(err))
@@ -182,6 +182,9 @@ def produce_kafka_message(topic_name, kafka_producer, message):
     return True
 
 
+worker_id = os.environ.get(("WORKERID"))
+
+
 if __name__ == "__main__":
 
     # setting env variables for secrets
@@ -202,8 +205,10 @@ if __name__ == "__main__":
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
+            # we need worker_id in order to insert and remove only current work of worker replica
+            # and don't affect current work of other replicas
             mycursor.execute(
-                "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
+                "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, worker_id INTEGER UNIQUE NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
@@ -294,23 +299,23 @@ if __name__ == "__main__":
                         # that has already arrived and for which the relevant entries have already
                         # been inserted in the table, no further insertion is made
                         mycursor = mydb.cursor()
-                        mycursor.execute("SELECT time_stamp FROM current_work")
-                        timestamp_list = mycursor.fetchone()
-                        if timestamp_list:
-                            timestamp_from_db = timestamp_list[0]
-                            current_timestamp = datetime.now()
-                            time_difference = current_timestamp - timestamp_from_db
-                            target_time_difference = timedelta(hours=1)
-                            if time_difference > target_time_difference:
-                                for i in range(0, len(userId_list)):
-                                    temp_dict = dict()
-                                    for key in set(data.keys()):
-                                        if key != "location":
-                                            temp_dict[key] = data.get(key)[i]
-                                    temp_dict['location'] = loc
-                                    json_to_insert = json.dumps(temp_dict)
-                                    mycursor.execute("INSERT INTO current_work (rules, time_stamp) VALUES (%s, %s)", (json_to_insert,"CURRENT_TIMESTAMP()"))
-                                mydb.commit()  # to make changes effective after inserting rules for ALL the users
+                        # mycursor.execute("SELECT time_stamp FROM current_work")
+                        # timestamp_list = mycursor.fetchone()
+                        # if timestamp_list:
+                        # timestamp_from_db = timestamp_list[0]
+                        # current_timestamp = datetime.now()
+                        # time_difference = current_timestamp - timestamp_from_db
+                        # target_time_difference = timedelta(hours=1)
+                        # if time_difference > target_time_difference:
+                        for i in range(0, len(userId_list)):
+                            temp_dict = dict()
+                            for key in set(data.keys()):
+                                if key != "location":
+                                    temp_dict[key] = data.get(key)[i]
+                            temp_dict['location'] = loc
+                            json_to_insert = json.dumps(temp_dict)
+                            mycursor.execute("INSERT INTO current_work (worker_id, rules, time_stamp) VALUES (%s, %s, %s)", (worker_id, json_to_insert,"CURRENT_TIMESTAMP()"))
+                        mydb.commit()  # to make changes effective after inserting rules for ALL the users
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")
                     try:
