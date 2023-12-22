@@ -1,5 +1,5 @@
 import confluent_kafka
-from confluent_kafka.admin import AdminClient
+# from confluent_kafka.admin import AdminClient
 import json
 import grpc
 import notifier_um_pb2
@@ -11,7 +11,6 @@ import mysql.connector
 import os
 import time
 import sys
-from datetime import datetime, timedelta
 
 
 def commit_completed(er, partitions):
@@ -139,6 +138,8 @@ def find_event_not_sent():
 
 if __name__ == "__main__":
 
+    print("Start notifier main")
+
     # setting env variables for secrets
     secret_password_path = os.environ.get('PASSWORD')
     with open(secret_password_path, 'r') as file:
@@ -153,28 +154,45 @@ if __name__ == "__main__":
         secret_email_value = file.read()
     os.environ['EMAIL'] = secret_email_value
 
+    print("ENV variables initialization done")
+
     # start Kafka subscription (if "event_to_be_notified" exists, else exit)
-    c = confluent_kafka.Consumer({'bootstrap.servers': 'kafka:9092', 'group.id': 'group1', 'enable.auto.commit': 'false', 'auto.offset.reset': 'latest', 'on_commit': commit_completed})
+    c = confluent_kafka.Consumer({'bootstrap.servers':'kafka:9092', 'group.id':'group1', 'enable.auto.commit':'false', 'auto.offset.reset':'latest', 'on_commit':commit_completed})
     try:
-        admin_conf = {'bootstrap.servers': 'kafka:9092'}
-        kadmin = AdminClient(admin_conf)
-        topics = kadmin.list_topics().topics  # Returns a dict()
-        topic_names = set(topics.keys())
-        found = False
-        for name in topic_names:
-            if name == "event_to_be_notified":
-                found = True
-                print(f"Topic {name} found: subscribe!")
-                c.subscribe(['event_to_be_notified'])
-        if found == False:
-            sys.exit("Terminate because Kafka topic to subscribe has been not found\n")
+        broker = 'kafka:9092'
+        topic = 'event_to_be_notified'
+        #admin_conf = {'bootstrap.servers': broker}
+        #kadmin = AdminClient(admin_conf)
+        #list_topics_metadata = kadmin.list_topics()
+        #topics = list_topics_metadata.topics  # Returns a dict()
+        #print(f"LIST_TOPICS: {list_topics_metadata}")
+        #print(f"TOPICS: {topics}")
+        #topic_names = set(topics.keys())
+        #print(f"TOPIC_NAMES: {topic_names}")
+        #found = False
+        #for name in topic_names:
+        #    if name == 'event_to_be_notified':
+        #        found = True
+        #        print(f"Topic {name} found: subscribe!")
+        c.subscribe(['event_to_be_notified'])
+        #if found == False:
+        #    sys.exit("Terminate because Kafka topic to subscribe has been not found\n")
     except confluent_kafka.KafkaException as ke:
         sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
         c.close()
         sys.exit("Terminate after Exception raised in Kafka topic subscribe\n")
+    except Exception as ke:
+        sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
+        c.close()
+        sys.exit("Terminate after GENERAL Exception raised in Kafka subscription\n")
+
+    print("Starting while true\n")
 
     try:
         while True:
+
+            print("New iteration!\n")
+
             # Creating table if not exits
             try:
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
@@ -222,20 +240,12 @@ if __name__ == "__main__":
                 try:
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                         mycursor = mydb.cursor()
-                        mycursor.execute("SELECT time_stamp FROM events")
-                        timestamp_list = mycursor.fetchone()
-                        if timestamp_list:
-                            timestamp_from_db = timestamp_list[0]
-                            current_timestamp = datetime.now()
-                            time_difference = current_timestamp - timestamp_from_db
-                            target_time_difference = timedelta(hours=1)
-                            if time_difference > target_time_difference:
-                                for user_id in user_id_set:
-                                    temp_dict = dict()
-                                    temp_dict["violated_rules"] = data.get(user_id)
-                                    violated_rules = json.dumps(temp_dict)
-                                    mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
-                                mydb.commit()  # to make changes effective after inserting ALL the violated_rules
+                        for user_id in user_id_set:
+                            temp_dict = dict()
+                            temp_dict["violated_rules"] = data.get(user_id)
+                            violated_rules = json.dumps(temp_dict)
+                            mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
+                        mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")
                     try:

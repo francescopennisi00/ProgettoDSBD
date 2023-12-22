@@ -67,7 +67,9 @@ if __name__ == '__main__':
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
             mycursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")  #TODO: to insert token JWT
-            mydb.commit()  # to make changes effective
+            mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)", ("franciccio.pennisi@gmail.com", "prova"))
+            mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)", ("ale10geno@gmail.com", "prova"))
+        mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:

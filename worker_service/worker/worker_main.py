@@ -204,6 +204,12 @@ if __name__ == "__main__":
             mycursor = mydb.cursor()
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
+            query_insert1 = """INSERT INTO current_work (rules, time_stamp) VALUES (%s, CURRENT_TIMESTAMP())"""
+            data1 = ('{"user_id": 1, "location": ["Yakutsk", 62.0274078, 129.7319787, "RU", "Sakha Republic"], "min_temp": 0, "max_pressure": 100}',)
+            mycursor.execute(query_insert1, data1)
+            query_insert2 = """INSERT INTO current_work (rules, time_stamp) VALUES (%s, CURRENT_TIMESTAMP())"""
+            data2 = ('{"user_id": 2, "location": ["Yakutsk", 62.0274078, 129.7319787, "RU", "Sakha Republic"], "min_temp": 0, "max_pressure": 100}',)
+            mycursor.execute(query_insert2, data2)
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
@@ -225,8 +231,12 @@ if __name__ == "__main__":
     kadmin = AdminClient(admin_conf)
 
     # Create topic "event_to_be_notified" if not exists
-    topics = kadmin.list_topics().topics  # Returns a dict()
+    list_topics_metadata = kadmin.list_topics()
+    topics = list_topics_metadata.topics  # Returns a dict()
+    print(f"LIST_TOPICS: {list_topics_metadata}")
+    print(f"TOPICS: {topics}")
     topic_names = set(topics.keys())
+    print(f"TOPIC_NAMES: {topic_names}")
     found = False
     for name in topic_names:
         if name == topic:
