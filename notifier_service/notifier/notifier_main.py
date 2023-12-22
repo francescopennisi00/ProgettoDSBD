@@ -227,9 +227,9 @@ if __name__ == "__main__":
             else:
                 # Check for Kafka message
                 record_key = msg.key()
-                print("REDCORD KEY " + record_key)
+                print("REDCORD KEY " + str(record_key))
                 record_value = msg.value()
-                print("RECORD VALUE " + record_value)
+                print("RECORD VALUE " + str(record_value))
                 data = json.loads(record_value)
                 location_name = data.get("location")[0]
                 location_country = data.get("location")[3]
