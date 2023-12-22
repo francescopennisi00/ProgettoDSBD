@@ -227,9 +227,9 @@ if __name__ == "__main__":
             else:
                 # Check for Kafka message
                 record_key = msg.key()
-                print(record_key)
+                print("REDCORD KEY " + record_key)
                 record_value = msg.value()
-                print(record_value)
+                print("RECORD VALUE " + record_value)
                 data = json.loads(record_value)
                 location_name = data.get("location")[0]
                 location_country = data.get("location")[3]
@@ -244,7 +244,7 @@ if __name__ == "__main__":
                             temp_dict = dict()
                             temp_dict["violated_rules"] = data.get(user_id)
                             violated_rules = json.dumps(temp_dict)
-                            mycursor.execute("INSERT INTO events VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
+                            mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent) VALUES(%s, %s, %s, %s, %s, %s, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, "CURRENT_TIMESTAMP()", "FALSE"))
                         mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")
