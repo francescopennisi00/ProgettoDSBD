@@ -164,6 +164,7 @@ if __name__ == "__main__":
         for name in topic_names:
             if name == "event_to_be_notified":
                 found = True
+                print(f"Topic {name} found: subscribe!")
                 c.subscribe(['event_to_be_notified'])
         if found == False:
             sys.exit("Terminate because Kafka topic to subscribe has been not found\n")
