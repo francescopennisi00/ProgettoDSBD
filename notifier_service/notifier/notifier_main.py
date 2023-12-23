@@ -107,7 +107,7 @@ def find_event_not_sent():
     try:
         db = mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE'))
         cursor = db.cursor()
-        cursor.execute("SELECT * FROM events WHERE sent=FALSE")
+        cursor.execute("SELECT * FROM events WHERE sent=FALSE AND notifier_id=%s", (notifier_id,))
         results = cursor.fetchall()
         for x in results:
             email = fetch_email(x[1])
@@ -136,6 +136,9 @@ def find_event_not_sent():
     except mysql.connector.Error as error:
         sys.stderr.write("Exception raised! -> " + str(error) +"\n")
         raise SystemExit
+
+
+notifier_id = os.environ.get(("NOTIFIERID"))
 
 
 if __name__ == "__main__":
@@ -199,7 +202,7 @@ if __name__ == "__main__":
             try:
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     mycursor = mydb.cursor()
-                    mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_name VARCHAR(70) NOT NULL, location_country VARCHAR(10) NOT NULL, location_state VARCHAR(30) NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL)")
+                    mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_name VARCHAR(70) NOT NULL, location_country VARCHAR(10) NOT NULL, location_state VARCHAR(30) NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL, notifier_id INTEGER UNIQUE NOT NULL)")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
                 sys.stderr.write("Exception raised! -> " + str(err) +"\n")
@@ -246,7 +249,7 @@ if __name__ == "__main__":
                             temp_dict = dict()
                             temp_dict["violated_rules"] = data.get(user_id)
                             violated_rules = json.dumps(temp_dict)
-                            mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent) VALUES(%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, FALSE)", (str(user_id), location_name, location_country, location_state, violated_rules))
+                            mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent, notifier_id) VALUES(%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, FALSE, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, notifier_id))
                         mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")

@@ -76,6 +76,7 @@ services:
       PASSWORD: /run/secrets/notifier_DB_root_psw
       DATABASE: "notifier"
       EMAIL: /run/secrets/email
+      NOTIFIERID: 1
     networks:
       - wheather_network
     restart: always
@@ -126,7 +127,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD_FILE: /run/secrets/worker_DB_root_psw
       MYSQL_DATABASE: worker
-      WORKERID: 1
     volumes:
       - worker_volume:/var/lib/mysql
     expose:
@@ -156,6 +156,7 @@ services:
       PASSWORD: /run/secrets/worker_DB_root_psw
       DATABASE: "worker"
       APIKEY: /run/secrets/apikey
+      WORKERID: 1
     networks:
       - wheather_network
     restart: always

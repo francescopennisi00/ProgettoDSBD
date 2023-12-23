@@ -5,7 +5,7 @@ import mysql.connector
 import os
 import sys
 import requests
-from datetime import datetime, timedelta
+# from datetime import datetime, timedelta
 
 
 def commit_completed(er, partitions):
@@ -208,7 +208,7 @@ if __name__ == "__main__":
             # we need worker_id in order to insert and remove only current work of worker replica
             # and don't affect current work of other replicas
             mycursor.execute(
-                "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, worker_id INTEGER UNIQUE NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL)")
+                "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, worker_id INTEGER UNIQUE NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
