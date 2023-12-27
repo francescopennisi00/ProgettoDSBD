@@ -36,6 +36,7 @@ def make_query(query):
         sys.stderr.write(f'Error: {er}\n')
 
 
+# TODO: to review description and function
 # compare values obtained from OpenWeather API call with those that have been placed into the DB
 # for recoverability from faults that occur before to possibly publish violated rules
 # returns the violated rules to be sent in the form of a dictionary that contains many other
@@ -171,7 +172,7 @@ def delivery_callback(err, msg):
 def produce_kafka_message(topic_name, kafka_producer, message):
     # Publish on the specific topic
     try:
-        producer_kafka.produce(topic_name, value=message, callback=delivery_callback)
+        kafka_producer.produce(topic_name, value=message, callback=delivery_callback)
     except BufferError:
         sys.stderr.write(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))

@@ -161,10 +161,50 @@ services:
       - wheather_network
     restart: always
 
+  wms_mysqlDB:
+    image: mysql:latest
+    container_name: wms_mysqlDB
+    secrets:
+      - wms_DB_root_psw
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/wms_DB_root_psw
+      MYSQL_DATABASE: wms
+    volumes:
+      - wms_volume:/var/lib/mysql
+    expose:
+      - "3306"
+    networks:
+      - wheather_network
+    restart: always
+
+  wms_service:
+    container_name: wms_service
+    build:
+      context: ../WMS_service
+      dockerfile: Dockerfile
+    image: wms_service_image:latest
+    depends_on:
+      - wms_mysqlDB
+      - kafka
+    expose:
+      - "50002"
+    secrets:
+      - wms_DB_root_psw
+    environment:
+      HOSTNAME: "wms_mysqlDB"
+      PORT: 3306
+      USER: "root"
+      PASSWORD: /run/secrets/wms_DB_root_psw
+      DATABASE: "wms"
+    networks:
+      - wheather_network
+    restart: always
+
 volumes:
   notifier_volume:
   um_volume:
   worker_volume:
+  wms_volume:
   zookeeper_data_volume:
   zookeeper_log_volume:
   zookeeper_secrets_volume:
@@ -177,13 +217,15 @@ networks:
 secrets:
   notifier_DB_root_psw:
     file: notifier_DB_root_psw.txt
-  app_password:
-    file: app_password.txt
-  email:
-    file: email.txt
   um_DB_root_psw:
     file: um_DB_root_psw.txt
   worker_DB_root_psw:
     file: worker_DB_root_psw.txt
+  wms_DB_root_psw:
+    file: wms_DB_root_psw.txt
+  app_password:
+    file: app_password.txt
+  email:
+    file: email.txt
   apikey:
     file: apikey.txt
