@@ -36,7 +36,6 @@ def make_query(query):
         sys.stderr.write(f'Error: {er}\n')
 
 
-# TODO: to review description and function
 # compare values obtained from OpenWeather API call with those that have been placed into the DB
 # for recoverability from faults that occur before to possibly publish violated rules
 # returns the violated rules to be sent in the form of a dictionary that contains many other
@@ -53,19 +52,17 @@ def check_rules(db_cursor, api_response):
         keys_set_target = set(rules_json.keys())
         for key in keys_set_target:
             temp_dict = dict()
-            if "max" in key:
+            if "max" in key and rules_json.get(key) != "null":
                 if api_response.get(key) > rules_json.get(key):
                     temp_dict[key] = api_response.get(key)
-            elif "min" in key:
+            elif "min" in key and rules_json.get(key) != "null":
                 if api_response.get(key) < rules_json.get(key):
                     temp_dict[key] = api_response.get(key)
-            # if "rain" and "snow" are in keys_set_target then these rules are of interest to the user
-            # so rules_json.get("rain"/"snow") is surely True
-            elif key == "rain" and api_response.get("rain") == True:
+            elif key == "rain" and rules_json.get(key) != "null" and api_response.get("rain") == True:
                 temp_dict[key] = api_response.get(key)
-            elif key == "snow" and api_response.get("snow") == True:
+            elif key == "snow" and rules_json.get(key) != "null" and api_response.get("snow") == True:
                 temp_dict[key] = api_response.get(key)
-            elif key == "wind_direction" and rules_json.get(key) == api_response.get(key):
+            elif key == "wind_direction" and rules_json.get(key) != "null" and rules_json.get(key) == api_response.get(key):
                 temp_dict[key] = api_response.get(key)
             user_violated_rules_list.append(temp_dict)
         event_dict[rules_json.get("user_id")] = user_violated_rules_list
@@ -124,7 +121,8 @@ def find_current_work():
             result = db_cursor.fetchone()
             if result:
                 dict_row = json.loads(result[0])
-                location_info = dict_row.get('location')  # all entries in current_works are related to the same location
+                # all entries in current_works are related to the same location
+                location_info = dict_row.get('location')
                 # make OpenWeather API call
                 apikey = os.environ.get('APIKEY')
                 rest_call = f"https://api.openweathermap.org/data/2.5/weather?lat={location_info[1]}&lon={location_info[2]}&units=metric&appid={apikey}"
@@ -201,6 +199,13 @@ if __name__ == "__main__":
     # create table current_work if not exists.
     # This table will contain many entries but all relating to the same message from the WMS
     # and therefore all with the same location
+    # in particular, each entry includes a rules field that contains many key-value pairs in a JSON
+    # in the form of { "user_id": value, "location": [name,lat,long,country,state],
+    # "rule_name" : actual value, "other_rule_name" : actual value }
+    # in the JSON there are all the rules in which the user is interested plus those in which
+    # the user is not interested but for which at least one other user is interested in.
+    # In this second case, the actual value of the rule is "null"
+
     try:
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
@@ -282,7 +287,22 @@ if __name__ == "__main__":
                 if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
                     raise SystemExit
             else:
+
                 # Check for Kafka message
+
+                # each Kafka message is related to a single location, in order to reduce as much as
+                # possible the number of OpenWeatherAPI query that worker must do, and it is a JSON
+                # that contains many key-value pairs such as key = "location" and value = location
+                # info in a list, then key = "user_id" and value = list of user_id of the users that are
+                # interested in the location, and lastly many other key-value pairs with
+                # key = rule_name and value = target value list for all the user according the order of
+                # user id in user_id list
+
+                # if a user is not interested in a specific rule for the location, then its rule value
+                # corresponding to the user id is set at "null", while if no user is interested in a
+                # specific rule for the location, then the key-value pair with key = rule name is not
+                # in the Kafka message
+
                 record_key = msg.key()
                 print(record_key)
                 record_value = msg.value()
