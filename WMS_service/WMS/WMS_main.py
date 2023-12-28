@@ -12,7 +12,9 @@ import time
 import sys
 import threading
 from concurrent import futures
-
+from flask import Flask
+from flask import request
+import socket
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
     mycursor.execute("SELECT location_name, lat, long, country_code, state_code FROM location WHERE id = %s", (str(location_id), ))
@@ -146,16 +148,88 @@ def timer(interval, event):
     time.sleep(interval)  # every hour the timer thread wakes up the main thread in order to send update
     event.set()
 
+app = Flask(__name__)
+
+@app.route('/update_rules', methods=['POST'])
+def update_rules_handler():
+    # Verify if data received is a JSON
+    if request.is_json:
+        try:
+            # Extract json data
+            data = request.get_json()
+            print("Data received:", data)
+            if data != '{}':
+                # TODO Comunication with UserManger in order to authenticate the user
+                # Supponiamo che sia autenticato e che abbiamo lo user_id restituito dallo user manager
+                id_user = 1 # PROVA
+                data_dict = json.loads(data)
+                trigger_period = data_dict.get('trigger_period')
+                username = data_dict.get('username')
+                password = data_dict.get('password')
+                location_name = data_dict.get('location')[0]
+                latitude = data_dict.get('location')[1]
+                longitude = data_dict.get('location')[2]
+                country_code = data_dict.get('location')[3]
+                state_code = data_dict.get('location')[4]
+                del data['username']
+                del data['password']
+                del data['trigger_period']
+                str_json = json.dumps(data)
+                try:
+                    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                 user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                 database=os.environ.get('DATABASE')) as mydb:
+
+                        # buffered=True needed because we reuse mycursor after a fetchone() in called function
+                        mycursor = mydb.cursor(buffered=True)
+
+                        # retrieve all the information about locations to build Kafka messages
+                        mycursor.execute("SELECT * FROM locations WHERE lat = %s and long = %s", (str(latitude), str(longitude)))
+                        results = mycursor.fetchall()
+                        if not results:
+                            sys.stderr.write("Error, there is no entry with that latitude and longitude")
+                            mycursor.execute("INSERT INTO locations (location_name, lat, long, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
+                            mydb.commit()
+                            location_id = mycursor.lastrowid
+                            print("New location correctly inserted!")
+                        else:
+                            location_id = results[0][0] # this is the first row and the first element of this row
+
+                        mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s", (str(id_user), str(location_id)))
+                        result = mycursor.fetchone()
+                        if result:
+                            mycursor.execute("UPDATE user_constraints SET rules = %s WHERE user_id = %s and location_id = %s", (str_json, str(id_user), str(location_id)))
+                            mydb.commit()
+                            mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
+                            mydb.commit()
+                            print("Update table user_constraints correctly!")
+                        else:
+                            mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s), (str(id_user), str(location_id), str_json, str(trigger_period)) ")
+                            mydb.commit()
+                            print("New user_constraints correctly inserted!")
+
+                except mysql.connector.Error as err:
+                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                    return f"Error in conneting to database: {str(err)}", 500
+                # username : name
+                # password : pw
+                # location : [location_name, lat, long, country_code, state_code]
+                # max_temp : 30
+                # min_temp : 15
+                # JSON completo anche con i null
+                # trigger_period : 3
+        except Exception as e:
+            return f"Error in reading data: {str(e)}", 400
+    else:
+        return "Error the request must be in JSON format", 400
 
 def serve_apigateway():
-    port = '50051'
-    # server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
-    # WMS_apigateway_pb2_grpc.add_WMSAPIGatewayServicer_to_server(WMSAPIGateway(), server)
-    # server.add_insecure_port('[::]:' + port)
-    # server.start()
-    # TODO: to be reviewed with REST, not gRPC
-    print("API Gateway thread server started, listening on " + port + "\n")
-    # server.wait_for_termination()
+    port = 50051
+    hostname = socket.gethostname()
+
+    print(f'Hostname: {hostname} server starting on port {port}')
+
+    app.run(host='0.0.0.0', port=port)
 
 
 
@@ -173,7 +247,7 @@ if __name__ == "__main__":
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS location (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL)")
+            mycursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL)")
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, FOREIGN KEY location_id REFERENCES location(id), UNIQUE KEY user_location_id (user_id, location_id))")
             mydb.commit()  # to make changes effective
@@ -227,6 +301,7 @@ if __name__ == "__main__":
     print("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway())
     threadAPIGateway.daemon = True
+
 
     while True:
         # wait for expired timer event
