@@ -4,17 +4,15 @@ import json
 import grpc
 # import WMS_um_pb2
 # import WMS_um_pb2_grpc
-# import WMS_apigateway_pb2_grpc TODO: maybe to remove
-# import WMS_apigateway_pb2 TODO: maybe to remove
 import mysql.connector
 import os
 import time
 import sys
 import threading
-from concurrent import futures
 from flask import Flask
 from flask import request
 import socket
+
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
     mycursor.execute("SELECT location_name, lat, long, country_code, state_code FROM location WHERE id = %s", (str(location_id), ))
@@ -57,18 +55,105 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
     final_json_dict["rows_id"] = rows_id_list
     final_json_dict['user_id'] = userid_list
     final_json_dict['location'] = location
-    final_json_dict['max_temp'] = max_temp_list
-    final_json_dict['min_temp'] = min_temp_list
-    final_json_dict['max_humidity'] = max_humidity_list
-    final_json_dict['min_humidity'] = min_humidity_list
-    final_json_dict['max_pressure'] = max_pressure_list
-    final_json_dict['min_pressure'] = min_pressure_list
-    final_json_dict['max_cloud'] = max_cloud_list
-    final_json_dict['min_cloud'] = min_cloud_list
-    final_json_dict['max_wind_speed'] = max_wind_speed_list
-    final_json_dict['min_wind_speed'] = min_wind_speed_list
-    final_json_dict['rain'] = rain_list
-    final_json_dict['snow'] = snow_list
+
+    # if no user is interested in a particular rule,
+    # then insertion of relative list of null values is not made
+
+    found = False
+    for element in max_temp_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['max_temp'] = max_temp_list
+
+    found = False
+    for element in min_temp_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['min_temp'] = min_temp_list
+
+    found = False
+    for element in max_humidity_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['max_humidity'] = max_humidity_list
+
+    found = False
+    for element in min_humidity_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['min_humidity'] = min_humidity_list
+
+    found = False
+    for element in max_pressure_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['max_pressure'] = max_pressure_list
+
+    found = False
+    for element in min_pressure_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['min_pressure'] = min_pressure_list
+
+    found = False
+    for element in max_cloud_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['max_cloud'] = max_cloud_list
+
+    found = False
+    for element in min_cloud_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['min_cloud'] = min_cloud_list
+
+    found = False
+    for element in max_wind_speed_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['max_wind_speed'] = max_wind_speed_list
+
+    found = False
+    for element in min_wind_speed_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['min_wind_speed'] = min_wind_speed_list
+
+    found = False
+    for element in rain_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['rain'] = rain_list
+
+    found = False
+    for element in snow_list:
+        if element != "null":
+            found = True
+            break
+    if found == True:
+        final_json_dict['snow'] = snow_list
 
     return json.dumps(final_json_dict)
 
@@ -148,7 +233,9 @@ def timer(interval, event):
     time.sleep(interval)  # every hour the timer thread wakes up the main thread in order to send update
     event.set()
 
+
 app = Flask(__name__)
+
 
 @app.route('/update_rules', methods=['POST'])
 def update_rules_handler():
@@ -159,9 +246,9 @@ def update_rules_handler():
             data = request.get_json()
             print("Data received:", data)
             if data != '{}':
-                # TODO Comunication with UserManger in order to authenticate the user
+                # TODO Comunication with UserManager in order to authenticate the user
                 # Supponiamo che sia autenticato e che abbiamo lo user_id restituito dallo user manager
-                id_user = 1 # PROVA
+                id_user = 1  # PROVA
                 data_dict = json.loads(data)
                 trigger_period = data_dict.get('trigger_period')
                 username = data_dict.get('username')
@@ -180,20 +267,20 @@ def update_rules_handler():
                                                  user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                  database=os.environ.get('DATABASE')) as mydb:
 
-                        # buffered=True needed because we reuse mycursor after a fetchone() in called function
+                        # buffered=True needed because we reuse mycursor after a fetchone()
                         mycursor = mydb.cursor(buffered=True)
 
                         # retrieve all the information about locations to build Kafka messages
-                        mycursor.execute("SELECT * FROM locations WHERE lat = %s and long = %s", (str(latitude), str(longitude)))
-                        results = mycursor.fetchall()
-                        if not results:
-                            sys.stderr.write("Error, there is no entry with that latitude and longitude")
+                        mycursor.execute("SELECT * FROM locations WHERE lat = %s and long = %s and location_name = %s", (str(latitude), str(longitude), location_name))
+                        row = mycursor.fetchone()
+                        if not row:
+                            sys.stderr.write("There is no entry with that latitude and longitude")
                             mycursor.execute("INSERT INTO locations (location_name, lat, long, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
                             mydb.commit()
                             location_id = mycursor.lastrowid
                             print("New location correctly inserted!")
                         else:
-                            location_id = results[0][0] # this is the first row and the first element of this row
+                            location_id = row[0]  # location id = first element of first
 
                         mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s", (str(id_user), str(location_id)))
                         result = mycursor.fetchone()
@@ -202,7 +289,7 @@ def update_rules_handler():
                             mydb.commit()
                             mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
                             mydb.commit()
-                            print("Update table user_constraints correctly!")
+                            print("Updated table user_constraints correctly!")
                         else:
                             mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s), (str(id_user), str(location_id), str_json, str(trigger_period)) ")
                             mydb.commit()
@@ -211,26 +298,18 @@ def update_rules_handler():
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")
                     return f"Error in conneting to database: {str(err)}", 500
-                # username : name
-                # password : pw
-                # location : [location_name, lat, long, country_code, state_code]
-                # max_temp : 30
-                # min_temp : 15
-                # JSON completo anche con i null
-                # trigger_period : 3
+
         except Exception as e:
             return f"Error in reading data: {str(e)}", 400
     else:
-        return "Error the request must be in JSON format", 400
+        return "Error: the request must be in JSON format", 400
+
 
 def serve_apigateway():
     port = 50051
     hostname = socket.gethostname()
-
-    print(f'Hostname: {hostname} server starting on port {port}')
-
+    print(f'Hostname: {hostname} -> server starting on port {port}')
     app.run(host='0.0.0.0', port=port)
-
 
 
 if __name__ == "__main__":
@@ -247,7 +326,7 @@ if __name__ == "__main__":
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL)")
+            mycursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL, UNIQUE KEY location_tuple (location_name, lat, long))")
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, FOREIGN KEY location_id REFERENCES location(id), UNIQUE KEY user_location_id (user_id, location_id))")
             mydb.commit()  # to make changes effective
@@ -288,7 +367,8 @@ if __name__ == "__main__":
     Kafka_msg_list = find_pending_work()
     if Kafka_msg_list != False:
         for message in Kafka_msg_list:
-            produce_kafka_message(topic, producer_kafka, message)
+            while produce_kafka_message(topic, producer_kafka, message) == False:
+                pass
     else:
         sys.exit("Error in finding pending work!")
 
@@ -302,7 +382,6 @@ if __name__ == "__main__":
     threadAPIGateway = threading.Thread(target=serve_apigateway())
     threadAPIGateway.daemon = True
 
-
     while True:
         # wait for expired timer event
         expired_timer_event.wait()
@@ -310,6 +389,7 @@ if __name__ == "__main__":
         Kafka_msg_list = find_pending_work()
         if Kafka_msg_list != False:
             for message in Kafka_msg_list:
-                produce_kafka_message(topic, producer_kafka, message)
+                while produce_kafka_message(topic, producer_kafka, message) == False:
+                    pass
         else:
             sys.exit("Error in finding pending work!")
