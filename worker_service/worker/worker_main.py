@@ -331,7 +331,7 @@ if __name__ == "__main__":
                         for i in range(0, len(userId_list)):
                             temp_dict = dict()
                             for key in set(data.keys()):
-                                if key != "location":
+                                if key != "location" and key != "rows_id":
                                     temp_dict[key] = data.get(key)[i]
                             temp_dict['location'] = loc
                             json_to_insert = json.dumps(temp_dict)

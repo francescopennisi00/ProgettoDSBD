@@ -4,10 +4,14 @@ import json
 import grpc
 # import WMS_um_pb2
 # import WMS_um_pb2_grpc
+# import WMS_apigateway_pb2_grpc TODO: maybe to remove
+# import WMS_apigateway_pb2 TODO: maybe to remove
 import mysql.connector
 import os
 import time
 import sys
+import threading
+from concurrent import futures
 
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
@@ -27,11 +31,13 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
     wind_direction_list = list()
     rain_list = list()
     snow_list = list()
+    rows_id_list = list()
     mycursor.execute("SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(HOUR, CURRENT_TIMESTAMP(), time_stamp) > trigger_period AND location_id = %s", (str(location_id),))
     results = mycursor.fetchall()
     for result in results:
         rules_dict = json.loads(result[3])
         userid_list.append(result[1])
+        rows_id_list.append(result[0])
         max_temp_list.append(rules_dict.get("max_temp"))
         min_temp_list.append(rules_dict.get("min_temp"))
         max_humidity_list.append(rules_dict.get("max_humidity"))
@@ -46,6 +52,7 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
         rain_list.append(rules_dict.get("rain"))
         snow_list.append(rules_dict.get("snow"))
 
+    final_json_dict["rows_id"] = rows_id_list
     final_json_dict['user_id'] = userid_list
     final_json_dict['location'] = location
     final_json_dict['max_temp'] = max_temp_list
@@ -67,6 +74,9 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
 # Optional per-message delivery callback (triggered by poll() or flush())
 # when a message has been successfully delivered or permanently
 # failed delivery (after retries).
+# Updating table user_constraints in order to avoid considering again a row in the building of
+# Kafka message to publish in "event_update" topic. In this way, we prevent multiple replication of
+# the WMS from sending the same trigger message to worker(s)
 def delivery_callback(err, msg):
     if err:
         sys.stderr.write('%% Message failed delivery: %s\n' % err)
@@ -74,12 +84,15 @@ def delivery_callback(err, msg):
     else:
         sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
+        message_dict = json.loads(msg)
+        rows_id_list = message_dict.get("rows_id")
         try:
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as mydb:
                 mycursor = mydb.cursor()
-                # TODO: update timestamp
+                for id in rows_id_list:
+                    mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s", (str(id), ))
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
             sys.stderr.write("Exception raised!\n" + str(err))
@@ -114,24 +127,36 @@ def find_pending_work():
             mycursor = mydb.cursor(buffered=True)
 
             # retrieve all the information about locations to build Kafka messages
-
             mycursor.execute("SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(HOUR, CURRENT_TIMESTAMP(), time_stamp) > trigger_period GROUP BY location_id")
             location_id_list = mycursor.fetchall()
+            Kafka_message_list = list()
             for location in location_id_list:
                 location_id = location[0]
                 final_json_dict = dict()
                 message = make_kafka_message(final_json_dict, location_id, mycursor)
-                # TODO: maybe it would be better return a list of Kafka messages
-                # TODO: and then publishing it sequentially
-                produce_kafka_message(topic, producer_kafka, message)
+                Kafka_message_list.append(message)
+            return Kafka_message_list
 
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
-        try:
-            mydb.rollback()
-        except Exception as exe:
-            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
-        sys.exit("Exiting...\n")
+        return False
+
+
+def timer(interval, event):
+    time.sleep(interval)  # every hour the timer thread wakes up the main thread in order to send update
+    event.set()
+
+
+def serve_apigateway():
+    port = '50051'
+    # server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
+    # WMS_apigateway_pb2_grpc.add_WMSAPIGatewayServicer_to_server(WMSAPIGateway(), server)
+    # server.add_insecure_port('[::]:' + port)
+    # server.start()
+    # TODO: to be reviewed with REST, not gRPC
+    print("API Gateway thread server started, listening on " + port + "\n")
+    # server.wait_for_termination()
+
 
 
 if __name__ == "__main__":
@@ -186,5 +211,30 @@ if __name__ == "__main__":
     producer_kafka = confluent_kafka.Producer(**producer_conf)
 
     # check in DB in order to find events to send
-    # TODO: maybe it return a list of Kafka messages to be published
-    find_pending_work()
+    Kafka_msg_list = find_pending_work()
+    if Kafka_msg_list != False:
+        for message in Kafka_msg_list:
+            produce_kafka_message(topic, producer_kafka, message)
+    else:
+        sys.exit("Error in finding pending work!")
+
+    # Event object for thread communication
+    expired_timer_event = threading.Event()
+
+    print("Starting timer thread!\n")
+    threadTimer = threading.Thread(target=timer(3600, expired_timer_event))
+    threadTimer.daemon = True
+    print("Starting API Gateway serving thread!\n")
+    threadAPIGateway = threading.Thread(target=serve_apigateway())
+    threadAPIGateway.daemon = True
+
+    while True:
+        # wait for expired timer event
+        expired_timer_event.wait()
+        # check in DB in order to find events to send
+        Kafka_msg_list = find_pending_work()
+        if Kafka_msg_list != False:
+            for message in Kafka_msg_list:
+                produce_kafka_message(topic, producer_kafka, message)
+        else:
+            sys.exit("Error in finding pending work!")

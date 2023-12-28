@@ -47,11 +47,12 @@ def serve_wms():
 def serve_apigateway():
     port = '50053'
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
-    notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
-    server.add_insecure_port('[::]:' + port)
-    server.start()
+    # notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
+    # server.add_insecure_port('[::]:' + port)
+    # server.start()
+    # TODO: to be reviewed with REST, not gRPC
     print("API Gateway server started, listening on " + port + "\n")
-    server.wait_for_termination()
+    # server.wait_for_termination()
 
 
 if __name__ == '__main__':
@@ -78,7 +79,10 @@ if __name__ == '__main__':
 
     print("Starting notifier serving thread!\n")
     threadNotifier = threading.Thread(target=serve_notifier())
+    threadNotifier.daemon = True
     print("Starting WMS serving thread!\n")
     threadWMS = threading.Thread(target=serve_wms())
+    threadWMS.daemon = True
     print("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway())
+    threadAPIGateway.daemon = True
