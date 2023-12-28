@@ -234,6 +234,17 @@ def timer(interval, event):
     event.set()
 
 
+def authenticate_and_retrieve_user_id(header):
+
+    jwt_token = header.split(' ')[1]  # Extract token from "Bearer <token>" string
+
+    # start gRPC communication with user_manager in order to retrieve user id
+
+    # TODO: to be modified
+    userid = 1
+    return userid
+
+
 app = Flask(__name__)
 
 
@@ -246,20 +257,24 @@ def update_rules_handler():
             data = request.get_json()
             print("Data received:", data)
             if data != '{}':
-                # TODO Comunication with UserManager in order to authenticate the user
-                # Supponiamo che sia autenticato e che abbiamo lo user_id restituito dallo user manager
-                id_user = 1  # PROVA
+                # Communication with UserManager in order to authenticate the user and retrieve user_id
+                authorization_header = request.headers.get('Authorization')
+                if authorization_header and authorization_header.startswith('Bearer '):
+                    id_user = authenticate_and_retrieve_user_id(authorization_header)
+                else:
+                    # No token provided in authorization header
+                    return 'JWT Token not provided', 401
                 data_dict = json.loads(data)
                 trigger_period = data_dict.get('trigger_period')
-                username = data_dict.get('username')
-                password = data_dict.get('password')
+                # username = data_dict.get('username') TODO: inserted in JWT token in the request header
+                # password = data_dict.get('password') TODO: inserted in JWT token in the request header
                 location_name = data_dict.get('location')[0]
                 latitude = data_dict.get('location')[1]
                 longitude = data_dict.get('location')[2]
                 country_code = data_dict.get('location')[3]
                 state_code = data_dict.get('location')[4]
-                del data['username']
-                del data['password']
+                del data['username']  # TODO: maybe to be removed
+                del data['password']  # TODO: maybe to be removed
                 del data['trigger_period']
                 str_json = json.dumps(data)
                 try:
