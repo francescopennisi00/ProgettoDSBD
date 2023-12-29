@@ -333,8 +333,8 @@ def update_rules_handler():
 def serve_apigateway():
     port = 50051
     hostname = socket.gethostname()
-    print(f'Hostname: {hostname} -> server starting on port {port}')
-    app.run(host='0.0.0.0', port=port)
+    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app.run(host='0.0.0.0', port=port, threaded=True)
 
 
 if __name__ == "__main__":
