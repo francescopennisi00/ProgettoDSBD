@@ -2,8 +2,8 @@ import confluent_kafka
 from confluent_kafka.admin import AdminClient, NewTopic
 import json
 import grpc
-# import WMS_um_pb2
-# import WMS_um_pb2_grpc
+import WMS_um_pb2
+import WMS_um_pb2_grpc
 import mysql.connector
 import os
 import time
@@ -239,10 +239,16 @@ def authenticate_and_retrieve_user_id(header):
     jwt_token = header.split(' ')[1]  # Extract token from "Bearer <token>" string
 
     # start gRPC communication with user_manager in order to retrieve user id
-
-    # TODO: to be modified
-    userid = 1
-    return userid
+    try:
+        with grpc.insecure_channel('um_service:50052') as channel:
+            stub = WMS_um_pb2_grpc.WMSUmStub(channel)
+            response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
+            print("Fetched user id: " + response.user_id + "\n")
+            user_id_to_return = response.user_id  # user id = -1 if Token expired
+    except grpc.RpcError as error:
+        sys.stderr.write("gRPC error! -> " + str(error) + "\n")
+        user_id_to_return = "null"
+    return user_id_to_return
 
 
 app = Flask(__name__)
@@ -261,20 +267,20 @@ def update_rules_handler():
                 authorization_header = request.headers.get('Authorization')
                 if authorization_header and authorization_header.startswith('Bearer '):
                     id_user = authenticate_and_retrieve_user_id(authorization_header)
+                    if id_user == "null":
+                        return 'Error in authentication: retry!'
+                    elif id_user == -1:
+                        return 'JWT Token expired: login required!'
                 else:
                     # No token provided in authorization header
-                    return 'JWT Token not provided', 401
+                    return 'JWT Token not provided: login required!', 401
                 data_dict = json.loads(data)
                 trigger_period = data_dict.get('trigger_period')
-                # username = data_dict.get('username') TODO: inserted in JWT token in the request header
-                # password = data_dict.get('password') TODO: inserted in JWT token in the request header
                 location_name = data_dict.get('location')[0]
                 latitude = data_dict.get('location')[1]
                 longitude = data_dict.get('location')[2]
                 country_code = data_dict.get('location')[3]
                 state_code = data_dict.get('location')[4]
-                del data['username']  # TODO: maybe to be removed
-                del data['password']  # TODO: maybe to be removed
                 del data['trigger_period']
                 str_json = json.dumps(data)
                 try:
@@ -312,7 +318,7 @@ def update_rules_handler():
 
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")
-                    return f"Error in conneting to database: {str(err)}", 500
+                    return f"Error in connecting to database: {str(err)}", 500
 
         except Exception as e:
             return f"Error in reading data: {str(e)}", 400
