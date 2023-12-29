@@ -15,7 +15,7 @@ import socket
 
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
-    mycursor.execute("SELECT location_name, lat, long, country_code, state_code FROM location WHERE id = %s", (str(location_id), ))
+    mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM location WHERE id = %s", (str(location_id), ))
     location = mycursor.fetchone()  # list of information about current location of the Kafka message
     userid_list = list()
     max_temp_list = list()
@@ -214,7 +214,7 @@ def find_pending_work():
             mycursor = mydb.cursor(buffered=True)
 
             # retrieve all the information about locations to build Kafka messages
-            mycursor.execute("SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(HOUR, CURRENT_TIMESTAMP(), time_stamp) > trigger_period GROUP BY location_id")
+            mycursor.execute("SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP(), time_stamp) > trigger_period GROUP BY location_id")
             location_id_list = mycursor.fetchall()
             Kafka_message_list = list()
             for location in location_id_list:
@@ -296,11 +296,11 @@ def update_rules_handler():
                         mycursor = mydb.cursor(buffered=True)
 
                         # retrieve all the information about locations to build Kafka messages
-                        mycursor.execute("SELECT * FROM locations WHERE lat = %s and long = %s and location_name = %s", (str(latitude), str(longitude), location_name))
+                        mycursor.execute("SELECT * FROM locations WHERE latitude = %s and longitude = %s and location_name = %s", (str(latitude), str(longitude), location_name))
                         row = mycursor.fetchone()
                         if not row:
                             sys.stderr.write("There is no entry with that latitude and longitude")
-                            mycursor.execute("INSERT INTO locations (location_name, lat, long, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
+                            mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
                             mydb.commit()
                             location_id = mycursor.lastrowid
                             print("New location correctly inserted!")
@@ -351,7 +351,7 @@ if __name__ == "__main__":
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, lat FLOAT NOT NULL, long FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL, UNIQUE KEY location_tuple (location_name, lat, long))")
+            mycursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, latitude FLOAT NOT NULL, longitude FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL, UNIQUE KEY location_tuple (location_name, latitude, longitude))")
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, FOREIGN KEY location_id REFERENCES location(id), UNIQUE KEY user_location_id (user_id, location_id))")
             mydb.commit()  # to make changes effective
@@ -401,7 +401,7 @@ if __name__ == "__main__":
     expired_timer_event = threading.Event()
 
     print("Starting timer thread!\n")
-    threadTimer = threading.Thread(target=timer(3600, expired_timer_event))
+    threadTimer = threading.Thread(target=timer(30, expired_timer_event))
     threadTimer.daemon = True
     print("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway())
