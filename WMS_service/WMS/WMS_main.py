@@ -244,7 +244,7 @@ def authenticate_and_retrieve_user_id(header):
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
             print("Fetched user id: " + response.user_id + "\n")
-            user_id_to_return = response.user_id  # user id = -1 if Token expired
+            user_id_to_return = response.user_id  # user id < 0 if some error occurred
     except grpc.RpcError as error:
         sys.stderr.write("gRPC error! -> " + str(error) + "\n")
         user_id_to_return = "null"
@@ -268,9 +268,13 @@ def update_rules_handler():
                 if authorization_header and authorization_header.startswith('Bearer '):
                     id_user = authenticate_and_retrieve_user_id(authorization_header)
                     if id_user == "null":
-                        return 'Error in authentication: retry!'
+                        return 'Error in communication with authentication server: retry!'
                     elif id_user == -1:
                         return 'JWT Token expired: login required!'
+                    elif id_user == -2:
+                        return 'Error in communication with DB in order to authentication: retry!'
+                    elif id_user == -3:
+                        return 'JWT Token is not valid: login required!'
                 else:
                     # No token provided in authorization header
                     return 'JWT Token not provided: login required!', 401

@@ -3,9 +3,41 @@ from concurrent import futures
 import grpc
 import notifier_um_pb2
 import notifier_um_pb2_grpc
+import WMS_um_pb2
+import WMS_um_pb2_grpc
 import mysql.connector
 import os
 import sys
+import jwt
+import json
+
+
+class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
+
+    # connection with DB and retrieve user id
+    def RequestUserIdViaJWTToken(self, request, context):
+        try:
+            # extract token information without verifying them: needed in order to retrieve user email
+            token = jwt.decode(request.jwt_token, algorithms=['HS256'], options={"verify_signature": False})
+            token_dict = json.loads(token)
+            email = token_dict.get("email")
+            try:
+                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
+                    cursor = db.cursor()
+                    cursor.execute("SELECT id, password FROM users WHERE email= %s", (email,))
+                    row = cursor.fetchone()
+                    userid = row[0]
+                    password = row[1]
+            except mysql.connector.Error as error:
+                sys.stderr.write("Exception raised! -> {0}".format(str(error)))
+                return WMS_um_pb2.Reply(user_id=-2)
+            # verify that password is correct verifying digital signature with secret = password
+            jwt.decode(token, password, algorithms=['HS256'])
+            return userid
+        except jwt.ExpiredSignatureError:
+            return WMS_um_pb2.Reply(user_id=-1)  # token is expired
+        except jwt.InvalidTokenError:
+            return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: password incorrect
 
 
 class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
