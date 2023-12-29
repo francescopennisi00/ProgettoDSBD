@@ -37,6 +37,20 @@ services:
       - kafka_secrets_volume:/etc/kafka/secrets
       - kafka_data_volume:/var/lib/kafka/data
 
+  apigw:
+    image: nginx:base
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    container_name: nginx_apigw
+    ports:
+      - '8080:80'
+    depends_on:
+      - wms_service
+      - um_service
+    volumes:
+      - ../nginx/configs/nginx.conf:/etc/nginx/conf.d/nginx.conf
+
   notifier_mysqlDB:
     image: mysql:latest
     container_name: notifier_mysqlDB
@@ -58,12 +72,10 @@ services:
     build:
       context: ../notifier_service
       dockerfile: Dockerfile
-    image: notifier_service_image:latest
+    image: notifier_service_image:base
     depends_on:
       - notifier_mysqlDB
       - kafka
-    expose:
-      - "50000"
     secrets:
       - app_password
       - notifier_DB_root_psw
@@ -102,11 +114,13 @@ services:
     build:
       context: ../user_manager_service
       dockerfile: Dockerfile
-    image: user_manager_service_image:latest
+    image: user_manager_service_image:base
     depends_on:
       - um_mysqlDB
     expose:
-      - "50001"
+      - "50051"
+      - "50052"
+      - "50053"
     secrets:
       - um_DB_root_psw
     environment:
@@ -140,12 +154,10 @@ services:
     build:
       context: ../worker_service
       dockerfile: Dockerfile
-    image: worker_service_image:latest
+    image: worker_service_image:base
     depends_on:
       - worker_mysqlDB
       - kafka
-    expose:
-      - "50002"
     secrets:
       - worker_DB_root_psw
       - apikey
@@ -182,12 +194,12 @@ services:
     build:
       context: ../WMS_service
       dockerfile: Dockerfile
-    image: wms_service_image:latest
+    image: wms_service_image:base
     depends_on:
       - wms_mysqlDB
       - kafka
     expose:
-      - "50002"
+      - "50051"
     secrets:
       - wms_DB_root_psw
     environment:
