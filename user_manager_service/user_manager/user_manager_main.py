@@ -128,7 +128,6 @@ def create_app():
         else:
             return "Error: the request must be in JSON format", 400
 
-
     @app.route('/login', methods=['POST'])
     def user_login():
         # verify if data received is a JSON
@@ -204,11 +203,14 @@ if __name__ == '__main__':
         sys.exit("User Manager terminating after an error...\n")
 
     print("Starting notifier serving thread!\n")
-    threadNotifier = threading.Thread(target=serve_notifier())
+    threadNotifier = threading.Thread(target=serve_notifier)
     threadNotifier.daemon = True
+    threadNotifier.start()
     print("Starting WMS serving thread!\n")
-    threadWMS = threading.Thread(target=serve_wms())
+    threadWMS = threading.Thread(target=serve_wms)
     threadWMS.daemon = True
+    threadWMS.start()
     print("Starting API Gateway serving thread!\n")
-    threadAPIGateway = threading.Thread(target=serve_apigateway())
+    threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
+    threadAPIGateway.start()

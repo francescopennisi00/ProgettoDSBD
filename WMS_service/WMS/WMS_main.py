@@ -404,11 +404,13 @@ if __name__ == "__main__":
     expired_timer_event = threading.Event()
 
     print("Starting timer thread!\n")
-    threadTimer = threading.Thread(target=timer(60, expired_timer_event))
+    threadTimer = threading.Thread(target=timer, args=(60, expired_timer_event))
     threadTimer.daemon = True
+    threadTimer.start()
     print("Starting API Gateway serving thread!\n")
-    threadAPIGateway = threading.Thread(target=serve_apigateway())
+    threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
+    threadAPIGateway.start()
 
     while True:
         # wait for expired timer event
