@@ -81,9 +81,6 @@ def serve_wms():
     server.wait_for_termination()
 
 
-app = Flask(__name__)
-
-
 def calculate_hash(input_string):
     sha256_hash = hashlib.sha256()
     sha256_hash.update(input_string.encode('utf-8'))
@@ -91,90 +88,96 @@ def calculate_hash(input_string):
     return hash_result
 
 
-@app.route('/register', methods=['POST'])
-def user_register():
-    # Verify if data received is a JSON
-    if request.is_json:
-        try:
-            # Extract json data
-            data = request.get_json()
-            if data != '{}':
-                data_dict = json.loads(data)
-                email = data_dict.get("email")
-                print("Email received:", email)
-                password = data_dict.get("psw")
-                try:
-                    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
-                                                 user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
-                                                 database=os.environ.get('DATABASE')) as mydb:
-                        mycursor = mydb.cursor()
+def create_app():
+    app = Flask(__name__)
 
-                        # check if email already exists in DB
-                        mycursor.execute("SELECT email FROM users WHERE email=%s", (email,))
-                        email_row = mycursor.fetchone()
-                        if not email_row:
-                            hash_psw = calculate_hash(password)  # we save hash in DB for major privacy for users
-                            mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)", (email_row[0], hash_psw))
-                            mydb.commit()
-                            return "Registration made successfully! Now try to sign in!"
-                        return f"Email already in use! Try to sign in!"
+    @app.route('/register', methods=['POST'])
+    def user_register():
+        # Verify if data received is a JSON
+        if request.is_json:
+            try:
+                # Extract json data
+                data = request.get_json()
+                if data != '{}':
+                    data_dict = json.loads(data)
+                    email = data_dict.get("email")
+                    print("Email received:", email)
+                    password = data_dict.get("psw")
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
+                            mycursor = mydb.cursor()
 
-                except mysql.connector.Error as err:
-                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
-                    return f"Error in connecting to database: {str(err)}", 500
+                            # check if email already exists in DB
+                            mycursor.execute("SELECT email FROM users WHERE email=%s", (email,))
+                            email_row = mycursor.fetchone()
+                            if not email_row:
+                                hash_psw = calculate_hash(password)  # we save hash in DB for major privacy for users
+                                mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)", (email_row[0], hash_psw))
+                                mydb.commit()
+                                return "Registration made successfully! Now try to sign in!"
+                            return f"Email already in use! Try to sign in!"
 
-        except Exception as e:
-            return f"Error in reading data: {str(e)}", 400
-    else:
-        return "Error: the request must be in JSON format", 400
+                    except mysql.connector.Error as err:
+                        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                        return f"Error in connecting to database: {str(err)}", 500
+
+            except Exception as e:
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            return "Error: the request must be in JSON format", 400
 
 
-@app.route('/login', methods=['POST'])
-def user_login():
-    # verify if data received is a JSON
-    if request.is_json:
-        try:
-            # Extract json data
-            data = request.get_json()
-            if data != '{}':
-                data_dict = json.loads(data)
-                email = data_dict.get("email")
-                print("Email received:", email)
-                password = data_dict.get("psw")
-                hash_psw = calculate_hash(password)  # in DB we have hash of the passworr
-                try:
-                    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
-                                                 user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
-                                                 database=os.environ.get('DATABASE')) as mydb:
-                        mycursor = mydb.cursor()
+    @app.route('/login', methods=['POST'])
+    def user_login():
+        # verify if data received is a JSON
+        if request.is_json:
+            try:
+                # Extract json data
+                data = request.get_json()
+                if data != '{}':
+                    data_dict = json.loads(data)
+                    email = data_dict.get("email")
+                    print("Email received:", email)
+                    password = data_dict.get("psw")
+                    hash_psw = calculate_hash(password)  # in DB we have hash of the passworr
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
+                            mycursor = mydb.cursor()
 
-                        # check if email already exists in DB
-                        mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s", (email,hash_psw))
-                        email_row = mycursor.fetchone()
-                        if not email_row:
-                            return f"Email or password wrong! Retry!"
-                        else:
-                            payload = {
-                                'email': email,
-                                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=3)
-                            }
-                            token = jwt.encode(payload, hash_psw, algorithm='HS256')
-                            return f"Login successfully made! JWT Token: {token}"
+                            # check if email already exists in DB
+                            mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s", (email,hash_psw))
+                            email_row = mycursor.fetchone()
+                            if not email_row:
+                                return f"Email or password wrong! Retry!"
+                            else:
+                                payload = {
+                                    'email': email,
+                                    'exp': datetime.datetime.utcnow() + datetime.timedelta(days=3)
+                                }
+                                token = jwt.encode(payload, hash_psw, algorithm='HS256')
+                                return f"Login successfully made! JWT Token: {token}"
 
-                except mysql.connector.Error as err:
-                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
-                    return f"Error in connecting to database: {str(err)}", 500
+                    except mysql.connector.Error as err:
+                        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                        return f"Error in connecting to database: {str(err)}", 500
 
-        except Exception as e:
-            return f"Error in reading data: {str(e)}", 400
-    else:
-        return "Error: the request must be in JSON format", 400
+            except Exception as e:
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            return "Error: the request must be in JSON format", 400
+
+    return app
 
 
 def serve_apigateway():
     port = 50053
     hostname = socket.gethostname()
     print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app = create_app()
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 

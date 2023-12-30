@@ -251,89 +251,92 @@ def authenticate_and_retrieve_user_id(header):
     return user_id_to_return
 
 
-app = Flask(__name__)
+def create_app():
+    app = Flask(__name__)
 
+    @app.route('/update_rules', methods=['POST'])
+    def update_rules_handler():
+        # Verify if data received is a JSON
+        if request.is_json:
+            try:
+                # Extract json data
+                data = request.get_json()
+                print("Data received:", data)
+                if data != '{}':
+                    # Communication with UserManager in order to authenticate the user and retrieve user_id
+                    authorization_header = request.headers.get('Authorization')
+                    if authorization_header and authorization_header.startswith('Bearer '):
+                        id_user = authenticate_and_retrieve_user_id(authorization_header)
+                        if id_user == "null":
+                            return 'Error in communication with authentication server: retry!'
+                        elif id_user == -1:
+                            return 'JWT Token expired: login required!'
+                        elif id_user == -2:
+                            return 'Error in communication with DB in order to authentication: retry!'
+                        elif id_user == -3:
+                            return 'JWT Token is not valid: login required!'
+                    else:
+                        # No token provided in authorization header
+                        return 'JWT Token not provided: login required!', 401
+                    data_dict = json.loads(data)
+                    trigger_period = data_dict.get('trigger_period')
+                    location_name = data_dict.get('location')[0]
+                    latitude = data_dict.get('location')[1]
+                    longitude = data_dict.get('location')[2]
+                    country_code = data_dict.get('location')[3]
+                    state_code = data_dict.get('location')[4]
+                    del data['trigger_period']
+                    str_json = json.dumps(data)
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
 
-@app.route('/update_rules', methods=['POST'])
-def update_rules_handler():
-    # Verify if data received is a JSON
-    if request.is_json:
-        try:
-            # Extract json data
-            data = request.get_json()
-            print("Data received:", data)
-            if data != '{}':
-                # Communication with UserManager in order to authenticate the user and retrieve user_id
-                authorization_header = request.headers.get('Authorization')
-                if authorization_header and authorization_header.startswith('Bearer '):
-                    id_user = authenticate_and_retrieve_user_id(authorization_header)
-                    if id_user == "null":
-                        return 'Error in communication with authentication server: retry!'
-                    elif id_user == -1:
-                        return 'JWT Token expired: login required!'
-                    elif id_user == -2:
-                        return 'Error in communication with DB in order to authentication: retry!'
-                    elif id_user == -3:
-                        return 'JWT Token is not valid: login required!'
-                else:
-                    # No token provided in authorization header
-                    return 'JWT Token not provided: login required!', 401
-                data_dict = json.loads(data)
-                trigger_period = data_dict.get('trigger_period')
-                location_name = data_dict.get('location')[0]
-                latitude = data_dict.get('location')[1]
-                longitude = data_dict.get('location')[2]
-                country_code = data_dict.get('location')[3]
-                state_code = data_dict.get('location')[4]
-                del data['trigger_period']
-                str_json = json.dumps(data)
-                try:
-                    with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
-                                                 user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
-                                                 database=os.environ.get('DATABASE')) as mydb:
+                            # buffered=True needed because we reuse mycursor after a fetchone()
+                            mycursor = mydb.cursor(buffered=True)
 
-                        # buffered=True needed because we reuse mycursor after a fetchone()
-                        mycursor = mydb.cursor(buffered=True)
+                            # retrieve all the information about locations to build Kafka messages
+                            mycursor.execute("SELECT * FROM locations WHERE latitude = %s and longitude = %s and location_name = %s", (str(latitude), str(longitude), location_name))
+                            row = mycursor.fetchone()
+                            if not row:
+                                sys.stderr.write("There is no entry with that latitude and longitude")
+                                mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
+                                mydb.commit()
+                                location_id = mycursor.lastrowid
+                                print("New location correctly inserted!")
+                            else:
+                                location_id = row[0]  # location id = first element of first
 
-                        # retrieve all the information about locations to build Kafka messages
-                        mycursor.execute("SELECT * FROM locations WHERE latitude = %s and longitude = %s and location_name = %s", (str(latitude), str(longitude), location_name))
-                        row = mycursor.fetchone()
-                        if not row:
-                            sys.stderr.write("There is no entry with that latitude and longitude")
-                            mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
-                            mydb.commit()
-                            location_id = mycursor.lastrowid
-                            print("New location correctly inserted!")
-                        else:
-                            location_id = row[0]  # location id = first element of first
+                            mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s", (str(id_user), str(location_id)))
+                            result = mycursor.fetchone()
+                            if result:
+                                mycursor.execute("UPDATE user_constraints SET rules = %s WHERE user_id = %s and location_id = %s", (str_json, str(id_user), str(location_id)))
+                                mydb.commit()
+                                mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
+                                mydb.commit()
+                                print("Updated table user_constraints correctly!")
+                            else:
+                                mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s), (str(id_user), str(location_id), str_json, str(trigger_period)) ")
+                                mydb.commit()
+                                print("New user_constraints correctly inserted!")
 
-                        mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s", (str(id_user), str(location_id)))
-                        result = mycursor.fetchone()
-                        if result:
-                            mycursor.execute("UPDATE user_constraints SET rules = %s WHERE user_id = %s and location_id = %s", (str_json, str(id_user), str(location_id)))
-                            mydb.commit()
-                            mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
-                            mydb.commit()
-                            print("Updated table user_constraints correctly!")
-                        else:
-                            mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s), (str(id_user), str(location_id), str_json, str(trigger_period)) ")
-                            mydb.commit()
-                            print("New user_constraints correctly inserted!")
+                    except mysql.connector.Error as err:
+                        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                        return f"Error in connecting to database: {str(err)}", 500
 
-                except mysql.connector.Error as err:
-                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
-                    return f"Error in connecting to database: {str(err)}", 500
+            except Exception as e:
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            return "Error: the request must be in JSON format", 400
 
-        except Exception as e:
-            return f"Error in reading data: {str(e)}", 400
-    else:
-        return "Error: the request must be in JSON format", 400
+    return app
 
 
 def serve_apigateway():
     port = 50051
     hostname = socket.gethostname()
     print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app = create_app()
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 
