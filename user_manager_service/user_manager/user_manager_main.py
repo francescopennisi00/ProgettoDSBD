@@ -1,10 +1,10 @@
 import threading
 from concurrent import futures
 import grpc
-import notifier_um_pb2
-import notifier_um_pb2_grpc
 import WMS_um_pb2
 import WMS_um_pb2_grpc
+import notifier_um_pb2
+import notifier_um_pb2_grpc
 import mysql.connector
 import os
 import sys

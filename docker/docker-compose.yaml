@@ -49,7 +49,10 @@ services:
       - wms_service
       - um_service
     volumes:
-      - ../nginx/configs/nginx.conf:/etc/nginx/conf.d/nginx.conf
+      - nginx_volume:/etc/nginx/conf.d
+    networks:
+      - wheather_network
+    restart: always
 
   notifier_mysqlDB:
     image: mysql:latest
@@ -222,6 +225,7 @@ volumes:
   zookeeper_secrets_volume:
   kafka_secrets_volume:
   kafka_data_volume:
+  nginx_volume:
 
 networks:
   wheather_network:
