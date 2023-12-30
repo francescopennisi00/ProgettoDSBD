@@ -9,7 +9,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - wheather_network
+      - weather_network
     restart: always
     volumes:
       - zookeeper_data_volume:/var/lib/zookeeper/data
@@ -31,7 +31,7 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
-      - wheather_network
+      - weather_network
     restart: always
     volumes:
       - kafka_secrets_volume:/etc/kafka/secrets
@@ -51,7 +51,7 @@ services:
     volumes:
       - nginx_volume:/etc/nginx/conf.d
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   notifier_mysqlDB:
@@ -67,7 +67,7 @@ services:
     expose:
       - "3306"
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   notifier_service:
@@ -93,7 +93,7 @@ services:
       EMAIL: /run/secrets/email
       NOTIFIERID: 1
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   um_mysqlDB:
@@ -109,7 +109,7 @@ services:
     expose:
       - "3306"
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   um_service:
@@ -133,7 +133,7 @@ services:
       PASSWORD: /run/secrets/um_DB_root_psw
       DATABASE: "um"
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   worker_mysqlDB:
@@ -149,7 +149,7 @@ services:
     expose:
       - "3306"
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   worker_service:
@@ -173,7 +173,7 @@ services:
       APIKEY: /run/secrets/apikey
       WORKERID: 1
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   wms_mysqlDB:
@@ -189,7 +189,7 @@ services:
     expose:
       - "3306"
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
   wms_service:
@@ -212,7 +212,7 @@ services:
       PASSWORD: /run/secrets/wms_DB_root_psw
       DATABASE: "wms"
     networks:
-      - wheather_network
+      - weather_network
     restart: always
 
 volumes:
@@ -228,7 +228,7 @@ volumes:
   nginx_volume:
 
 networks:
-  wheather_network:
+  weather_network:
 
 secrets:
   notifier_DB_root_psw:
