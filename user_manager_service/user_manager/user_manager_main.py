@@ -17,6 +17,21 @@ import hashlib
 import datetime
 
 
+# create lock objects for mutual exclusion in acquire stdout and stderr resource
+lock = threading.Lock()
+lock_error = threading.Lock()
+
+
+def safe_print(message):
+    with lock:
+        print(message)
+
+
+def safe_print_error(error):
+    with lock_error:
+        sys.stderr.write(error)
+
+
 class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
 
     # connection with DB and retrieve user id
@@ -34,7 +49,7 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                     userid = row[0]
                     password = row[1]
             except mysql.connector.Error as error:
-                sys.stderr.write("Exception raised! -> {0}".format(str(error)))
+                safe_print_error("Exception raised! -> {0}".format(str(error)))
                 return WMS_um_pb2.Reply(user_id=-2)
             # verify that password is correct verifying digital signature with secret = password
             jwt.decode(token, password, algorithms=['HS256'])
@@ -56,7 +71,7 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
                 row = cursor.fetchone()
                 email = row[0]
         except mysql.connector.Error as error:
-            sys.stderr.write("Exception raised! -> {0}".format(str(error)))
+            safe_print_error("Exception raised! -> {0}".format(str(error)))
             email = "null"
         return notifier_um_pb2.Reply(email=email)
 
@@ -67,7 +82,7 @@ def serve_notifier():
     notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    print("Notifier thread server started, listening on " + port + "\n")
+    safe_print("Notifier thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -77,7 +92,7 @@ def serve_wms():
     notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    print("WMS thread server started, listening on " + port + "\n")
+    safe_print("WMS thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -101,7 +116,7 @@ def create_app():
                 if data != '{}':
                     data_dict = json.loads(data)
                     email = data_dict.get("email")
-                    print("Email received:", email)
+                    safe_print("Email received:", email)
                     password = data_dict.get("psw")
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -120,7 +135,7 @@ def create_app():
                             return f"Email already in use! Try to sign in!"
 
                     except mysql.connector.Error as err:
-                        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                        safe_print_error("Exception raised! -> " + str(err) + "\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -138,7 +153,7 @@ def create_app():
                 if data != '{}':
                     data_dict = json.loads(data)
                     email = data_dict.get("email")
-                    print("Email received:", email)
+                    safe_print("Email received:", email)
                     password = data_dict.get("psw")
                     hash_psw = calculate_hash(password)  # in DB we have hash of the passworr
                     try:
@@ -161,7 +176,7 @@ def create_app():
                                 return f"Login successfully made! JWT Token: {token}"
 
                     except mysql.connector.Error as err:
-                        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                        safe_print_error("Exception raised! -> " + str(err) + "\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -172,12 +187,14 @@ def create_app():
     return app
 
 
+app = create_app()
+
+
 def serve_apigateway():
     port = 50053
     hostname = socket.gethostname()
-    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
-    app = create_app()
-    app.run(host='0.0.0.0', port=port, threaded=True)
+    safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app.run(host='um_service', port=port, threaded=True)
 
 
 if __name__ == '__main__':
@@ -202,15 +219,15 @@ if __name__ == '__main__':
             sys.stderr.write(f"Exception raised in rollback: {e}\n")
         sys.exit("User Manager terminating after an error...\n")
 
-    print("Starting notifier serving thread!\n")
+    safe_print("Starting notifier serving thread!\n")
     threadNotifier = threading.Thread(target=serve_notifier)
     threadNotifier.daemon = True
     threadNotifier.start()
-    print("Starting WMS serving thread!\n")
+    safe_print("Starting WMS serving thread!\n")
     threadWMS = threading.Thread(target=serve_wms)
     threadWMS.daemon = True
     threadWMS.start()
-    print("Starting API Gateway serving thread!\n")
+    safe_print("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()

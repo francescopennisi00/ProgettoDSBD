@@ -14,6 +14,21 @@ from flask import request
 import socket
 
 
+# create lock objects for mutual exclusion in acquire stdout and stderr resource
+lock = threading.Lock()
+lock_error = threading.Lock()
+
+
+def safe_print(message):
+    with lock:
+        print(message)
+
+
+def safe_print_error(error):
+    with lock_error:
+        sys.stderr.write(error)
+
+
 def make_kafka_message(final_json_dict, location_id, mycursor):
     mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM location WHERE id = %s", (str(location_id), ))
     location = mycursor.fetchone()  # list of information about current location of the Kafka message
@@ -166,10 +181,10 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
 # the WMS from sending the same trigger message to worker(s)
 def delivery_callback(err, msg):
     if err:
-        sys.stderr.write('%% Message failed delivery: %s\n' % err)
+        safe_print_error('%% Message failed delivery: %s\n' % err)
         raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
     else:
-        sys.stderr.write('%% Message delivered to %s, partition[%d] @ %d\n' %
+        safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
         message_dict = json.loads(msg)
         rows_id_list = message_dict.get("rows_id")
@@ -182,11 +197,11 @@ def delivery_callback(err, msg):
                     mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s", (str(id), ))
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
-            sys.stderr.write("Exception raised!\n" + str(err))
+            safe_print_error("Exception raised!\n" + str(err))
             try:
                 mydb.rollback()
             except Exception as exe:
-                sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                safe_print_error(f"Exception raised in rollback: {exe}\n")
             raise SystemExit
 
 
@@ -195,11 +210,11 @@ def produce_kafka_message(topic_name, kafka_producer, message):
     try:
         kafka_producer.produce(topic_name, value=message, callback=delivery_callback)
     except BufferError:
-        sys.stderr.write(
+        safe_print_error(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
         return False
     # Wait until the message have been delivered
-    sys.stderr.write("Waiting for message to be delivered\n")
+    safe_print_error("Waiting for message to be delivered\n")
     kafka_producer.flush()
     return True
 
@@ -225,7 +240,7 @@ def find_pending_work():
             return Kafka_message_list
 
     except mysql.connector.Error as err:
-        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+        safe_print_error("Exception raised! -> " + str(err) + "\n")
         return False
 
 
@@ -243,10 +258,11 @@ def authenticate_and_retrieve_user_id(header):
         with grpc.insecure_channel('um_service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
-            print("Fetched user id: " + response.user_id + "\n")
+            with lock:
+                safe_print("Fetched user id: " + response.user_id + "\n")
             user_id_to_return = response.user_id  # user id < 0 if some error occurred
     except grpc.RpcError as error:
-        sys.stderr.write("gRPC error! -> " + str(error) + "\n")
+        safe_print_error("gRPC error! -> " + str(error) + "\n")
         user_id_to_return = "null"
     return user_id_to_return
 
@@ -261,7 +277,7 @@ def create_app():
             try:
                 # Extract json data
                 data = request.get_json()
-                print("Data received:", data)
+                safe_print("Data received:", data)
                 if data != '{}':
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
@@ -299,11 +315,12 @@ def create_app():
                             mycursor.execute("SELECT * FROM locations WHERE latitude = %s and longitude = %s and location_name = %s", (str(latitude), str(longitude), location_name))
                             row = mycursor.fetchone()
                             if not row:
-                                sys.stderr.write("There is no entry with that latitude and longitude")
+                                safe_print_error("There is no entry with that latitude and longitude")
                                 mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
                                 mydb.commit()
                                 location_id = mycursor.lastrowid
-                                print("New location correctly inserted!")
+                                with lock:
+                                    safe_print("New location correctly inserted!")
                             else:
                                 location_id = row[0]  # location id = first element of first
 
@@ -314,14 +331,14 @@ def create_app():
                                 mydb.commit()
                                 mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
                                 mydb.commit()
-                                print("Updated table user_constraints correctly!")
+                                safe_print("Updated table user_constraints correctly!")
                             else:
                                 mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s), (str(id_user), str(location_id), str_json, str(trigger_period)) ")
                                 mydb.commit()
-                                print("New user_constraints correctly inserted!")
+                                safe_print("New user_constraints correctly inserted!")
 
                     except mysql.connector.Error as err:
-                        sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                        safe_print_error("Exception raised! -> " + str(err) + "\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -332,12 +349,14 @@ def create_app():
     return app
 
 
+app = create_app()
+
+
 def serve_apigateway():
     port = 50051
     hostname = socket.gethostname()
-    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
-    app = create_app()
-    app.run(host='0.0.0.0', port=port, threaded=True)
+    safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app.run(host='wms_service', port=port, threaded=True)
 
 
 if __name__ == "__main__":
@@ -403,11 +422,11 @@ if __name__ == "__main__":
     # Event object for thread communication
     expired_timer_event = threading.Event()
 
-    print("Starting timer thread!\n")
+    safe_print("Starting timer thread!\n")
     threadTimer = threading.Thread(target=timer, args=(60, expired_timer_event))
     threadTimer.daemon = True
     threadTimer.start()
-    print("Starting API Gateway serving thread!\n")
+    safe_print("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
