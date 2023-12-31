@@ -16,7 +16,6 @@ from flask import request
 import hashlib
 import datetime
 
-
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
@@ -42,7 +41,9 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
             token_dict = json.loads(token)
             email = token_dict.get("email")
             try:
-                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
+                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                             user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                             database=os.environ.get('DATABASE')) as db:
                     cursor = db.cursor()
                     cursor.execute("SELECT id, password FROM users WHERE email= %s", (email,))
                     row = cursor.fetchone()
@@ -65,7 +66,9 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
     # connection with DB and retrieve email
     def RequestEmail(self, request, context):
         try:
-            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                         user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                         database=os.environ.get('DATABASE')) as db:
                 cursor = db.cursor()
                 cursor.execute("SELECT email FROM users WHERE id= %s", (str(request.user_id),))
                 row = cursor.fetchone()
@@ -116,7 +119,7 @@ def create_app():
                 if data != '{}':
                     data_dict = json.loads(data)
                     email = data_dict.get("email")
-                    safe_print("Email received:", email)
+                    safe_print("Email received:" + email)
                     password = data_dict.get("psw")
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -129,7 +132,8 @@ def create_app():
                             email_row = mycursor.fetchone()
                             if not email_row:
                                 hash_psw = calculate_hash(password)  # we save hash in DB for major privacy for users
-                                mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)", (email_row[0], hash_psw))
+                                mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)",
+                                                 (email, hash_psw))
                                 mydb.commit()
                                 return "Registration made successfully! Now try to sign in!"
                             return f"Email already in use! Try to sign in!"
@@ -153,7 +157,7 @@ def create_app():
                 if data != '{}':
                     data_dict = json.loads(data)
                     email = data_dict.get("email")
-                    safe_print("Email received:", email)
+                    safe_print("Email received:" + email)
                     password = data_dict.get("psw")
                     hash_psw = calculate_hash(password)  # in DB we have hash of the passworr
                     try:
@@ -163,7 +167,8 @@ def create_app():
                             mycursor = mydb.cursor()
 
                             # check if email already exists in DB
-                            mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s", (email,hash_psw))
+                            mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s",
+                                             (email, hash_psw))
                             email_row = mycursor.fetchone()
                             if not email_row:
                                 return f"Email or password wrong! Retry!"
@@ -187,6 +192,7 @@ def create_app():
     return app
 
 
+# create Flask application
 app = create_app()
 
 
@@ -194,7 +200,7 @@ def serve_apigateway():
     port = 50053
     hostname = socket.gethostname()
     safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
-    app.run(host='um_service', port=port, threaded=True)
+    app.run(host='0.0.0.0', port=port, threaded=True)
 
 
 if __name__ == '__main__':
@@ -207,9 +213,12 @@ if __name__ == '__main__':
 
     # Creating table users if not exits
     try:
-        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
+        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                     database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")  #TODO: to insert token JWT
+            mycursor.execute(
+                "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
@@ -231,3 +240,6 @@ if __name__ == '__main__':
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
+    # inserted only because created threads are daemon
+    while True:
+        pass

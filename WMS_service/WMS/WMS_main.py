@@ -277,7 +277,7 @@ def create_app():
             try:
                 # Extract json data
                 data = request.get_json()
-                safe_print("Data received:", data)
+                safe_print("Data received:" + data)
                 if data != '{}':
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
@@ -349,6 +349,7 @@ def create_app():
     return app
 
 
+# create Flask application
 app = create_app()
 
 
@@ -356,7 +357,7 @@ def serve_apigateway():
     port = 50051
     hostname = socket.gethostname()
     safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
-    app.run(host='wms_service', port=port, threaded=True)
+    app.run(host='0.0.0.0', port=port, threaded=True)
 
 
 if __name__ == "__main__":
