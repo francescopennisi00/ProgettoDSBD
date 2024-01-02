@@ -314,7 +314,7 @@ def create_app():
                             row = mycursor.fetchone()
                             if not row:
                                 safe_print_error("There is no entry with that latitude and longitude")
-                                mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
+                                mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
                                 mydb.commit()
                                 location_id = mycursor.lastrowid
                                 safe_print("New location correctly inserted!")

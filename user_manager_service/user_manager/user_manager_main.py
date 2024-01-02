@@ -55,11 +55,11 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                 safe_print_error("Exception raised! -> {0}".format(str(error)))
                 return WMS_um_pb2.Reply(user_id=-2)
             # verify that password is correct verifying digital signature with secret = password
-            jwt.decode(token_dict, password, algorithms=['HS256'])
-            return userid
+            jwt.decode(request.jwt_token, password, algorithms=['HS256'])
+            return WMS_um_pb2.Reply(user_id=userid)
         except jwt.ExpiredSignatureError:
             return WMS_um_pb2.Reply(user_id=-1)  # token is expired
-        except jwt.InvalidTokenError:  # TODO: always raised!!! why??? to try in other environment!
+        except jwt.InvalidTokenError:
             return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: password incorrect
 
 
