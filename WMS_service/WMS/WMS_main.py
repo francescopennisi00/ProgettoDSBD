@@ -283,13 +283,13 @@ def create_app():
                     if authorization_header and authorization_header.startswith('Bearer '):
                         id_user = authenticate_and_retrieve_user_id(authorization_header)
                         if id_user == "null":
-                            return 'Error in communication with authentication server: retry!'
+                            return 'Error in communication with authentication server: retry!', 500
                         elif id_user == -1:
-                            return 'JWT Token expired: login required!'
+                            return 'JWT Token expired: login required!', 401
                         elif id_user == -2:
-                            return 'Error in communication with DB in order to authentication: retry!'
+                            return 'Error in communication with DB in order to authentication: retry!', 500
                         elif id_user == -3:
-                            return 'JWT Token is not valid: login required!'
+                            return 'JWT Token is not valid: login required!', 401
                     else:
                         # No token provided in authorization header
                         return 'JWT Token not provided: login required!', 401
@@ -317,8 +317,7 @@ def create_app():
                                 mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
                                 mydb.commit()
                                 location_id = mycursor.lastrowid
-                                with lock:
-                                    safe_print("New location correctly inserted!")
+                                safe_print("New location correctly inserted!")
                             else:
                                 location_id = row[0]  # location id = first element of first
 

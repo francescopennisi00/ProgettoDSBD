@@ -47,8 +47,11 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                     cursor = db.cursor()
                     cursor.execute("SELECT id, password FROM users WHERE email= %s", (email,))
                     row = cursor.fetchone()
-                    userid = row[0]
-                    password = row[1]
+                    if row:
+                        userid = row[0]
+                        password = row[1]
+                    else:
+                        return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: email not present
             except mysql.connector.Error as error:
                 safe_print_error("Exception raised! -> {0}".format(str(error)))
                 return WMS_um_pb2.Reply(user_id=-2)
@@ -92,7 +95,7 @@ def serve_notifier():
 def serve_wms():
     port = '50052'
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
-    notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
+    WMS_um_pb2_grpc.add_WMSUmServicer_to_server(WMSUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
     safe_print("WMS thread server started, listening on " + port + "\n")
@@ -116,7 +119,6 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                print(data_dict)
                 if data_dict:
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
@@ -135,8 +137,8 @@ def create_app():
                                 mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)",
                                                  (email, hash_psw))
                                 mydb.commit()
-                                return "Registration made successfully! Now try to sign in!"
-                            return f"Email already in use! Try to sign in!"
+                                return "Registration made successfully! Now try to sign in!", 200
+                            return f"Email already in use! Try to sign in!", 401
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
@@ -170,14 +172,14 @@ def create_app():
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
                             if not email_row:
-                                return f"Email or password wrong! Retry!"
+                                return f"Email or password wrong! Retry!", 401
                             else:
                                 payload = {
                                     'email': email,
                                     'exp': datetime.datetime.utcnow() + datetime.timedelta(days=3)
                                 }
                                 token = jwt.encode(payload, hash_psw, algorithm='HS256')
-                                return f"Login successfully made! JWT Token: {token}"
+                                return f"Login successfully made! JWT Token: {token}", 200
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
