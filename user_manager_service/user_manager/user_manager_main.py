@@ -115,9 +115,9 @@ def create_app():
         if request.is_json:
             try:
                 # Extract json data
-                data = request.get_json()
-                if data != '{}':
-                    data_dict = json.loads(data)
+                data_dict = request.get_json()
+                print(data_dict)
+                if data_dict:
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
                     password = data_dict.get("psw")
@@ -153,9 +153,8 @@ def create_app():
         if request.is_json:
             try:
                 # Extract json data
-                data = request.get_json()
-                if data != '{}':
-                    data_dict = json.loads(data)
+                data_dict = request.get_json()
+                if data_dict:
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
                     password = data_dict.get("psw")
@@ -218,7 +217,7 @@ if __name__ == '__main__':
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
             mycursor.execute(
-                "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(30) NOT NULL)")
+                "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(64) NOT NULL)")
             mydb.commit()  # to make changes effective
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")

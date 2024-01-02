@@ -258,8 +258,7 @@ def authenticate_and_retrieve_user_id(header):
         with grpc.insecure_channel('um_service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
-            with lock:
-                safe_print("Fetched user id: " + response.user_id + "\n")
+            safe_print("Fetched user id: " + response.user_id + "\n")
             user_id_to_return = response.user_id  # user id < 0 if some error occurred
     except grpc.RpcError as error:
         safe_print_error("gRPC error! -> " + str(error) + "\n")
@@ -276,9 +275,9 @@ def create_app():
         if request.is_json:
             try:
                 # Extract json data
-                data = request.get_json()
-                safe_print("Data received:" + data)
-                if data != '{}':
+                data_dict = request.get_json()
+                safe_print("Data received:" + str(data_dict))
+                if data_dict:
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
                     if authorization_header and authorization_header.startswith('Bearer '):
@@ -294,15 +293,14 @@ def create_app():
                     else:
                         # No token provided in authorization header
                         return 'JWT Token not provided: login required!', 401
-                    data_dict = json.loads(data)
                     trigger_period = data_dict.get('trigger_period')
                     location_name = data_dict.get('location')[0]
                     latitude = data_dict.get('location')[1]
                     longitude = data_dict.get('location')[2]
                     country_code = data_dict.get('location')[3]
                     state_code = data_dict.get('location')[4]
-                    del data['trigger_period']
-                    str_json = json.dumps(data)
+                    del data_dict['trigger_period']
+                    str_json = json.dumps(data_dict)
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
