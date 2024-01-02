@@ -258,7 +258,7 @@ def authenticate_and_retrieve_user_id(header):
         with grpc.insecure_channel('um_service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
-            safe_print("Fetched user id: " + response.user_id + "\n")
+            safe_print("Fetched user id: " + str(response.user_id) + "\n")
             user_id_to_return = response.user_id  # user id < 0 if some error occurred
     except grpc.RpcError as error:
         safe_print_error("gRPC error! -> " + str(error) + "\n")
@@ -276,7 +276,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                safe_print("Data received:" + str(data_dict))
+                print("Data received:" + str(data_dict))
                 if data_dict:
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
@@ -330,7 +330,7 @@ def create_app():
                                 mydb.commit()
                                 safe_print("Updated table user_constraints correctly!")
                             else:
-                                mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s), (str(id_user), str(location_id), str_json, str(trigger_period)) ")
+                                mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s)", (str(id_user), str(location_id), str_json, str(trigger_period)))
                                 mydb.commit()
                                 safe_print("New user_constraints correctly inserted!")
 

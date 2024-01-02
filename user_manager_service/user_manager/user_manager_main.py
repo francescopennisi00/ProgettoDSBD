@@ -37,8 +37,7 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
     def RequestUserIdViaJWTToken(self, request, context):
         try:
             # extract token information without verifying them: needed in order to retrieve user email
-            token = jwt.decode(request.jwt_token, algorithms=['HS256'], options={"verify_signature": False})
-            token_dict = json.loads(token)
+            token_dict = jwt.decode(request.jwt_token, algorithms=['HS256'], options={"verify_signature": False})
             email = token_dict.get("email")
             try:
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -56,11 +55,11 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                 safe_print_error("Exception raised! -> {0}".format(str(error)))
                 return WMS_um_pb2.Reply(user_id=-2)
             # verify that password is correct verifying digital signature with secret = password
-            jwt.decode(token, password, algorithms=['HS256'])
+            jwt.decode(token_dict, password, algorithms=['HS256'])
             return userid
         except jwt.ExpiredSignatureError:
             return WMS_um_pb2.Reply(user_id=-1)  # token is expired
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError:  # TODO: always raised!!! why??? to try in other environment!
             return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: password incorrect
 
 
@@ -160,7 +159,7 @@ def create_app():
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
                     password = data_dict.get("psw")
-                    hash_psw = calculate_hash(password)  # in DB we have hash of the passworr
+                    hash_psw = calculate_hash(password)  # in the DB we have hash of the password
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
