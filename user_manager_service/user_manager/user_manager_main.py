@@ -108,6 +108,18 @@ def calculate_hash(input_string):
     return hash_result
 
 
+def delete_UserConstraints_By_UserID(userId):
+    try:
+        with grpc.insecure_channel('wms_service:50052') as channel:
+            stub = WMS_um_pb2_grpc.WMSUmStub(channel)
+            response = stub.RequestDeleteUser_Constraints(WMS_um_pb2.User(user_id=userId))
+            code_to_return = response.response_code  # user id < 0 if some error occurred
+    except grpc.RpcError as error:
+        safe_print_error("gRPC error! -> " + str(error) + "\n")
+        code_to_return = -1
+    return code_to_return
+
+
 def create_app():
     app = Flask(__name__)
 
@@ -212,16 +224,19 @@ def create_app():
                             mycursor = mydb.cursor()
 
                             # check if email already exists in DB
-                            mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s",
+                            mycursor.execute("SELECT id, email, password FROM users WHERE email=%s and password=%s",
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
                             if not email_row:
                                 return f"Email or password wrong! Retry!", 401
                             else:
-                                mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
-                                (email, hash_psw))
-                                mydb.commit()
-                                return "ACCOUNT DELETED!", 200
+                                if delete_UserConstraints_By_UserID(email_row[0]) != -1:
+                                    mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
+                                                     (email, hash_psw))
+                                    mydb.commit()
+                                    return "ACCOUNT DELETED WITH RELATIVE USER_CONSTRAINTS!", 200
+                                else:
+                                    return "Error in grpc comunication, account not deleted", 500
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
                         try:

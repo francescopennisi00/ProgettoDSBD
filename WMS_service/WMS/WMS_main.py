@@ -1,6 +1,7 @@
 import confluent_kafka
 from confluent_kafka.admin import AdminClient, NewTopic
 import json
+from concurrent import futures
 import grpc
 import WMS_um_pb2
 import WMS_um_pb2_grpc
@@ -27,6 +28,25 @@ def safe_print_error(error):
     with lock_error:
         sys.stderr.write(error)
 
+
+class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
+    def RequestDeleteUser_Constraints(self, request, context):
+        user_id = request.user_id
+        try:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                         user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                         database=os.environ.get('DATABASE')) as db:
+                cursor = db.cursor()
+                cursor.execute("DELETE FROM user_constraints WHERE user_id= %s", (user_id,))
+                db.commit()
+                return WMS_um_pb2.Response_Code(response_code=200)
+        except mysql.connector.Error as error:
+            safe_print_error("Exception raised! -> {0}".format(str(error)))
+            try:
+                mydb.rollback()
+            except Exception as exe:
+                sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+            return WMS_um_pb2.Response_Code(response_code=-1)
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
     mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM locations WHERE id = %s",
@@ -456,6 +476,16 @@ def serve_apigateway():
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 
+def serve_um():
+    port = '50052'
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
+    WMS_um_pb2_grpc.add_WMSUmServicer_to_server(WMSUm(), server)
+    server.add_insecure_port('[::]:' + port)
+    server.start()
+    safe_print("UM thread server started, listening on " + port + "\n")
+    server.wait_for_termination()
+
+
 if __name__ == "__main__":
 
     # setting env variables for secrets
@@ -528,6 +558,9 @@ if __name__ == "__main__":
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
+    threadUM = threading.Thread(target=serve_um)
+    threadUM.daemon = True
+    threadUM.start()
 
     while True:
         # wait for expired timer event

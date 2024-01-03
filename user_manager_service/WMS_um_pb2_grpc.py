@@ -19,12 +19,23 @@ class WMSUmStub(object):
                 request_serializer=WMS__um__pb2.Request.SerializeToString,
                 response_deserializer=WMS__um__pb2.Reply.FromString,
                 )
+        self.RequestDeleteUser_Constraints = channel.unary_unary(
+                '/WMS_um.WMSUm/RequestDeleteUser_Constraints',
+                request_serializer=WMS__um__pb2.User.SerializeToString,
+                response_deserializer=WMS__um__pb2.Response_Code.FromString,
+                )
 
 
 class WMSUmServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def RequestUserIdViaJWTToken(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RequestDeleteUser_Constraints(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -37,6 +48,11 @@ def add_WMSUmServicer_to_server(servicer, server):
                     servicer.RequestUserIdViaJWTToken,
                     request_deserializer=WMS__um__pb2.Request.FromString,
                     response_serializer=WMS__um__pb2.Reply.SerializeToString,
+            ),
+            'RequestDeleteUser_Constraints': grpc.unary_unary_rpc_method_handler(
+                    servicer.RequestDeleteUser_Constraints,
+                    request_deserializer=WMS__um__pb2.User.FromString,
+                    response_serializer=WMS__um__pb2.Response_Code.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -62,5 +78,22 @@ class WMSUm(object):
         return grpc.experimental.unary_unary(request, target, '/WMS_um.WMSUm/RequestUserIdViaJWTToken',
             WMS__um__pb2.Request.SerializeToString,
             WMS__um__pb2.Reply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def RequestDeleteUser_Constraints(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/WMS_um.WMSUm/RequestDeleteUser_Constraints',
+            WMS__um__pb2.User.SerializeToString,
+            WMS__um__pb2.Response_Code.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

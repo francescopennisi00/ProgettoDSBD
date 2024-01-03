@@ -203,6 +203,7 @@ services:
       - kafka
     expose:
       - "50051"
+      - "50052"
     secrets:
       - wms_DB_root_psw
     environment:
