@@ -247,8 +247,9 @@ def find_pending_work():
 
 
 def timer(interval, event):
-    time.sleep(interval)  # every hour the timer thread wakes up the main thread in order to send update
-    event.set()
+    while True:
+        time.sleep(interval)  # every hour the timer thread wakes up the main thread in order to send update
+        event.set()
 
 
 def authenticate_and_retrieve_user_id(header):
@@ -433,8 +434,8 @@ if __name__ == "__main__":
 
     while True:
         # wait for expired timer event
-        safe_print("waiting for expired time event!")
         expired_timer_event.wait()
+        expired_timer_event.clear()
         # check in DB in order to find events to send
         Kafka_msg_list = find_pending_work()
         if Kafka_msg_list != False:

@@ -304,16 +304,16 @@ if __name__ == "__main__":
                 # in the Kafka message
 
                 record_key = msg.key()
-                print("RECORD_KEY" + str(record_key))
+                print("RECORD_KEY   " + str(record_key))
                 record_value = msg.value()
-                print("RECORD_VALUE" + str(record_value))
+                print("RECORD_VALUE   " + str(record_value))
                 data = json.loads(record_value)
-                print("DATA" + str(data))
+                print("DATA   " + str(data))
                 # update current_work in DB
                 userId_list = data.get("user_id")
-                print("USER_ID_LIST" + str(userId_list))
+                print("USER_ID_LIST   " + str(userId_list))
                 loc = data.get('location')
-                print("LOCATION" + str(loc))
+                print("LOCATION   " + str(loc))
                 try:
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                  user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
