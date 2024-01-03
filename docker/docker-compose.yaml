@@ -123,8 +123,7 @@ services:
     expose:
       - "50051"
       - "50052"
-    ports:
-      - "5000:50053"
+      - "50053"
     secrets:
       - um_DB_root_psw
     environment:
@@ -202,8 +201,8 @@ services:
     depends_on:
       - wms_mysqlDB
       - kafka
-    ports:
-      - "5001:50051"
+    expose:
+      - "50051"
     secrets:
       - wms_DB_root_psw
     environment:
