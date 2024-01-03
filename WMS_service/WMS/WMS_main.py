@@ -30,7 +30,7 @@ def safe_print_error(error):
 
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
-    mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM location WHERE id = %s", (str(location_id), ))
+    mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM locations WHERE id = %s", (str(location_id), ))
     location = mycursor.fetchone()  # list of information about current location of the Kafka message
     userid_list = list()
     max_temp_list = list()
@@ -47,7 +47,7 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
     rain_list = list()
     snow_list = list()
     rows_id_list = list()
-    mycursor.execute("SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(HOUR, CURRENT_TIMESTAMP(), time_stamp) > trigger_period AND location_id = %s", (str(location_id),))
+    mycursor.execute("SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND location_id = %s", (str(location_id),))
     results = mycursor.fetchall()
     for result in results:
         rules_dict = json.loads(result[3])
@@ -169,7 +169,7 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
             break
     if found == True:
         final_json_dict['snow'] = snow_list
-
+    safe_print("FINAL JSON DICT" + str(final_json_dict))
     return json.dumps(final_json_dict)
 
 
@@ -186,7 +186,8 @@ def delivery_callback(err, msg):
     else:
         safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
-        message_dict = json.loads(msg)
+        message_dict = json.loads(msg.value())
+        safe_print(message_dict)
         rows_id_list = message_dict.get("rows_id")
         try:
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -194,6 +195,7 @@ def delivery_callback(err, msg):
                                          database=os.environ.get('DATABASE')) as mydb:
                 mycursor = mydb.cursor()
                 for id in rows_id_list:
+                    safe_print("ID in ROWS_ID_LIST" + str(id))
                     mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s", (str(id), ))
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
@@ -229,7 +231,7 @@ def find_pending_work():
             mycursor = mydb.cursor(buffered=True)
 
             # retrieve all the information about locations to build Kafka messages
-            mycursor.execute("SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP(), time_stamp) > trigger_period GROUP BY location_id")
+            mycursor.execute("SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period GROUP BY location_id")
             location_id_list = mycursor.fetchall()
             Kafka_message_list = list()
             for location in location_id_list:
@@ -328,11 +330,11 @@ def create_app():
                                 mydb.commit()
                                 mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
                                 mydb.commit()
-                                safe_print("Updated table user_constraints correctly!")
+                                return "Updated table user_constraints correctly!", 200
                             else:
                                 mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s)", (str(id_user), str(location_id), str_json, str(trigger_period)))
                                 mydb.commit()
-                                safe_print("New user_constraints correctly inserted!")
+                                return "New user_constraints correctly inserted!",200
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
@@ -431,6 +433,7 @@ if __name__ == "__main__":
 
     while True:
         # wait for expired timer event
+        safe_print("waiting for expired time event!")
         expired_timer_event.wait()
         # check in DB in order to find events to send
         Kafka_msg_list = find_pending_work()

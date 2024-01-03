@@ -61,7 +61,7 @@ def insert_rule_in_mail_text(rule, value, name_loc, country, state):
         return f"The humidity in {name_loc} ({country}, {state}) is {str(value)} %!\n"
     elif rule == "max_pressure" or rule == "min_pressure":
         return f"The pressure in {name_loc} ({country}, {state}) is {str(value)} hPa!\n"
-    elif rule == "clouds_max" or rule == "clouds_min":
+    elif rule == "max_cloud" or rule == "min_cloud":
         return f"The the percentage of sky covered by clouds in {name_loc} ({country}, {state}) is {str(value)} %\n"
     elif rule == "max_wind_speed" or rule == "min_wind_speed":
         return f"The wind speed in {name_loc} ({country}, {state}) is {str(value)} m/s!\n"

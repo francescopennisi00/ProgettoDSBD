@@ -83,8 +83,8 @@ def format_data(data):
     output_json_dict['min_pressure'] = data["main"]["pressure"]
     output_json_dict["max_wind_speed"] = data["wind"]["speed"]
     output_json_dict["min_wind_speed"] = data["wind"]["speed"]
-    output_json_dict["clouds_max"] = data["clouds"]["all"]
-    output_json_dict["clouds_min"] = data["clouds"]["all"]
+    output_json_dict["max_cloud"] = data["clouds"]["all"]
+    output_json_dict["min_cloud"] = data["clouds"]["all"]
     direction_list = ["N", "NE", "E", " SE", "S", "SO", "O", "NO"]
     j = 0
     for i in range(0, 316, 45):
@@ -304,14 +304,16 @@ if __name__ == "__main__":
                 # in the Kafka message
 
                 record_key = msg.key()
-                print(record_key)
+                print("RECORD_KEY" + str(record_key))
                 record_value = msg.value()
-                print(record_value)
+                print("RECORD_VALUE" + str(record_value))
                 data = json.loads(record_value)
-
+                print("DATA" + str(data))
                 # update current_work in DB
                 userId_list = data.get("user_id")
+                print("USER_ID_LIST" + str(userId_list))
                 loc = data.get('location')
+                print("LOCATION" + str(loc))
                 try:
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                  user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
@@ -335,7 +337,7 @@ if __name__ == "__main__":
                                     temp_dict[key] = data.get(key)[i]
                             temp_dict['location'] = loc
                             json_to_insert = json.dumps(temp_dict)
-                            mycursor.execute("INSERT INTO current_work (worker_id, rules, time_stamp) VALUES (%s, %s, %s)", (worker_id, json_to_insert,"CURRENT_TIMESTAMP()"))
+                            mycursor.execute("INSERT INTO current_work (worker_id, rules, time_stamp) VALUES (%s, %s, CURRENT_TIMESTAMP())", (worker_id, json_to_insert))
                         mydb.commit()  # to make changes effective after inserting rules for ALL the users
                 except mysql.connector.Error as err:
                     sys.stderr.write("Exception raised! -> " + str(err) + "\n")
