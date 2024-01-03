@@ -141,6 +141,10 @@ def create_app():
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        try:
+                            mydb.rollback()
+                        except Exception as exe:
+                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -182,6 +186,48 @@ def create_app():
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        return f"Error in connecting to database: {str(err)}", 500
+
+            except Exception as e:
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            return "Error: the request must be in JSON format", 400
+
+    @app.route('/delete_account', methods=['POST'])
+    def delete_account():
+        # verify if data received is a JSON
+        if request.is_json:
+            try:
+                # Extract json data
+                data_dict = request.get_json()
+                if data_dict:
+                    email = data_dict.get("email")
+                    safe_print("Email received:" + email)
+                    password = data_dict.get("psw")
+                    hash_psw = calculate_hash(password)  # in the DB we have hash of the password
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
+                            mycursor = mydb.cursor()
+
+                            # check if email already exists in DB
+                            mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s",
+                                             (email, hash_psw))
+                            email_row = mycursor.fetchone()
+                            if not email_row:
+                                return f"Email or password wrong! Retry!", 401
+                            else:
+                                mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
+                                (email, hash_psw))
+                                mydb.commit()
+                                return "ACCOUNT DELETED!", 200
+                    except mysql.connector.Error as err:
+                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        try:
+                            mydb.rollback()
+                        except Exception as exe:
+                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:

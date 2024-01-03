@@ -275,6 +275,76 @@ def authenticate_and_retrieve_user_id(header):
 def create_app():
     app = Flask(__name__)
 
+    @app.route('/update_rules/delete_user_constraints_by_location', methods=['POST'])
+    def delete_user_constraints_by_location_handler():
+        # Verify if data received is a JSON
+        if request.is_json:
+            try:
+                # Extract json data
+                data_dict = request.get_json()
+                safe_print("DELETE USER CONSTRAINTS BY LOCATION \n\n Data received: " + str(data_dict))
+                if data_dict:
+                    # Communication with UserManager in order to authenticate the user and retrieve user_id
+                    authorization_header = request.headers.get('Authorization')
+                    if authorization_header and authorization_header.startswith('Bearer '):
+                        id_user = authenticate_and_retrieve_user_id(authorization_header)
+                        if id_user == "null":
+                            return 'Error in communication with authentication server: retry!', 500
+                        elif id_user == -1:
+                            return 'JWT Token expired: login required!', 401
+                        elif id_user == -2:
+                            return 'Error in communication with DB in order to authentication: retry!', 500
+                        elif id_user == -3:
+                            return 'JWT Token is not valid: login required!', 401
+                    else:
+                        # No token provided in authorization header
+                        return 'JWT Token not provided: login required!', 401
+                    location_name = data_dict.get('location')[0]
+                    latitude = data_dict.get('location')[1]
+                    rounded_latitude = round(latitude, 3)
+                    longitude = data_dict.get('location')[2]
+                    rounded_longitude = round(longitude, 3)
+                    country_code = data_dict.get('location')[3]
+                    state_code = data_dict.get('location')[4]
+                    safe_print_error(
+                        "LOCATION  " + location_name + '  ' + str(rounded_latitude) + '  ' + str(rounded_longitude) + '  ' + str(
+                            country_code) + '  ' + str(state_code) + "\n\n")
+                    str_json = json.dumps(data_dict)
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
+
+                            # buffered=True needed because we reuse mycursor after a fetchone()
+                            mycursor = mydb.cursor(buffered=True)
+
+                            # retrieve all the information about locations to build Kafka messages
+                            mycursor.execute(
+                                "SELECT * FROM locations WHERE ROUND(latitude,3) = %s and ROUND(longitude,3) = %s and location_name = %s",
+                                (str(rounded_latitude), str(rounded_longitude), location_name))
+                            row = mycursor.fetchone()
+                            if not row:
+                                safe_print_error("There is no entry with that latitude and longitude\n")
+                                return "Error, there is no locations to delete with that parameters", 400
+                            else:
+                                location_id = row[0]
+                                mycursor.execute("DELETE FROM user_constraints WHERE user_id = %s and location_id = %s",
+                                                 (str(id_user), str(location_id)))
+                                mydb.commit()
+                                return "Row in user_constraints correctly deleted", 200
+                    except mysql.connector.Error as err:
+                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        try:
+                            mydb.rollback()
+                        except Exception as exe:
+                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                        return f"Error in connecting to database: {str(err)}", 500
+
+            except Exception as e:
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            return "Error: the request must be in JSON format", 400
+
     @app.route('/update_rules', methods=['POST'])
     def update_rules_handler():
         # Verify if data received is a JSON
@@ -359,12 +429,18 @@ def create_app():
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        try:
+                            mydb.rollback()
+                        except Exception as exe:
+                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
                 return f"Error in reading data: {str(e)}", 400
         else:
             return "Error: the request must be in JSON format", 400
+
+
 
     return app
 
