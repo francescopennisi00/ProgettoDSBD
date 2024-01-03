@@ -13,7 +13,6 @@ from flask import Flask
 from flask import request
 import socket
 
-
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
@@ -30,7 +29,8 @@ def safe_print_error(error):
 
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
-    mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM locations WHERE id = %s", (str(location_id), ))
+    mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM locations WHERE id = %s",
+                     (str(location_id),))
     location = mycursor.fetchone()  # list of information about current location of the Kafka message
     userid_list = list()
     max_temp_list = list()
@@ -47,7 +47,9 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
     rain_list = list()
     snow_list = list()
     rows_id_list = list()
-    mycursor.execute("SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND location_id = %s", (str(location_id),))
+    mycursor.execute(
+        "SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND location_id = %s",
+        (str(location_id),))
     results = mycursor.fetchall()
     for result in results:
         rules_dict = json.loads(result[3])
@@ -195,8 +197,9 @@ def delivery_callback(err, msg):
                                          database=os.environ.get('DATABASE')) as mydb:
                 mycursor = mydb.cursor()
                 for id in rows_id_list:
-                    safe_print("ID in ROWS_ID_LIST" + str(id))
-                    mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s", (str(id), ))
+                    safe_print("ID in ROWS_ID_LIST  " + str(id))
+                    mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s",
+                                     (str(id),))
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
             safe_print_error("Exception raised!\n" + str(err))
@@ -231,7 +234,8 @@ def find_pending_work():
             mycursor = mydb.cursor(buffered=True)
 
             # retrieve all the information about locations to build Kafka messages
-            mycursor.execute("SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period GROUP BY location_id")
+            mycursor.execute(
+                "SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period GROUP BY location_id")
             location_id_list = mycursor.fetchall()
             Kafka_message_list = list()
             for location in location_id_list:
@@ -253,7 +257,6 @@ def timer(interval, event):
 
 
 def authenticate_and_retrieve_user_id(header):
-
     jwt_token = header.split(' ')[1]  # Extract token from "Bearer <token>" string
 
     # start gRPC communication with user_manager in order to retrieve user id
@@ -299,9 +302,14 @@ def create_app():
                     trigger_period = data_dict.get('trigger_period')
                     location_name = data_dict.get('location')[0]
                     latitude = data_dict.get('location')[1]
+                    rounded_latitude = round(latitude, 3)
                     longitude = data_dict.get('location')[2]
+                    rounded_longitude = round(longitude, 3)
                     country_code = data_dict.get('location')[3]
                     state_code = data_dict.get('location')[4]
+                    safe_print_error(
+                        "LOCATION  " + location_name + '  ' + str(rounded_latitude) + '  ' + str(rounded_longitude) + '  ' + str(
+                            country_code) + '  ' + str(state_code) + "\n\n")
                     del data_dict['trigger_period']
                     str_json = json.dumps(data_dict)
                     try:
@@ -313,29 +321,41 @@ def create_app():
                             mycursor = mydb.cursor(buffered=True)
 
                             # retrieve all the information about locations to build Kafka messages
-                            mycursor.execute("SELECT * FROM locations WHERE latitude = %s and longitude = %s and location_name = %s", (str(latitude), str(longitude), location_name))
+                            mycursor.execute(
+                                "SELECT * FROM locations WHERE ROUND(latitude,3) = %s and ROUND(longitude,3) = %s and location_name = %s",
+                                (str(rounded_latitude), str(rounded_longitude), location_name))
                             row = mycursor.fetchone()
                             if not row:
-                                safe_print_error("There is no entry with that latitude and longitude")
-                                mycursor.execute("INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s, %s)", (location_name, str(latitude), str(longitude), country_code, state_code))
+                                safe_print_error("There is no entry with that latitude and longitude\n")
+                                mycursor.execute(
+                                    "INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s, %s)",
+                                    (location_name, str(rounded_latitude), str(rounded_longitude), country_code,
+                                     state_code))
                                 mydb.commit()
                                 location_id = mycursor.lastrowid
-                                safe_print("New location correctly inserted!")
+                                safe_print("New location correctly inserted!\n")
                             else:
                                 location_id = row[0]  # location id = first element of first
 
-                            mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s", (str(id_user), str(location_id)))
+                            mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s",
+                                             (str(id_user), str(location_id)))
                             result = mycursor.fetchone()
                             if result:
-                                mycursor.execute("UPDATE user_constraints SET rules = %s WHERE user_id = %s and location_id = %s", (str_json, str(id_user), str(location_id)))
+                                mycursor.execute(
+                                    "UPDATE user_constraints SET rules = %s WHERE user_id = %s and location_id = %s",
+                                    (str_json, str(id_user), str(location_id)))
                                 mydb.commit()
-                                mycursor.execute("UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s", (str(trigger_period), str(id_user), str(location_id)))
+                                mycursor.execute(
+                                    "UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s",
+                                    (str(trigger_period), str(id_user), str(location_id)))
                                 mydb.commit()
                                 return "Updated table user_constraints correctly!", 200
                             else:
-                                mycursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s)", (str(id_user), str(location_id), str_json, str(trigger_period)))
+                                mycursor.execute(
+                                    "INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s)",
+                                    (str(id_user), str(location_id), str_json, str(trigger_period)))
                                 mydb.commit()
-                                return "New user_constraints correctly inserted!",200
+                                return "New user_constraints correctly inserted!", 200
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
@@ -374,7 +394,8 @@ if __name__ == "__main__":
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
-            mycursor.execute("CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, latitude FLOAT NOT NULL, longitude FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL, UNIQUE KEY location_tuple (location_name, latitude, longitude));")
+            mycursor.execute(
+                "CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, latitude FLOAT NOT NULL, longitude FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL, UNIQUE KEY location_tuple (location_name, latitude, longitude));")
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, FOREIGN KEY (location_id) REFERENCES locations(id), UNIQUE KEY user_location_id (user_id, location_id));")
             mydb.commit()  # to make changes effective
@@ -406,7 +427,7 @@ if __name__ == "__main__":
             found = True
     if found == False:
         new_topic = NewTopic(topic, 1, 1)  # Number-of-partitions = 1, Number-of-replicas = 1
-        kadmin.create_topics([new_topic,])
+        kadmin.create_topics([new_topic, ])
 
     # Create Producer instance
     producer_kafka = confluent_kafka.Producer(**producer_conf)
