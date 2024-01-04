@@ -2,59 +2,59 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: um_mysqlDB_service
+  name: um-mysqlDB-service
   labels:
-    app: um_mysqlDB_service
+    app: um-mysqlDB-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: um_mysqlDB
+    app: um-mysqlDB
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: um_mysqlDB_stateful_set
+  name: um-mysqlDB-stateful-set
   namespace: weather-app
   labels:
-    app: um_mysqlDB_stateful_set
+    app: um-mysqlDB-stateful-set
 spec:
-  serviceName: "um_mysqlDB_service"
+  serviceName: "um-mysqlDB-service"
   replicas: 1
   selector:
     matchLabels:
-      app: um_mysqlDB
+      app: um-mysqlDB
   template:
     metadata:
       labels:
-        app: um_mysqlDB
+        app: um-mysqlDB
     spec:
       restartPolicy: Always
       containers:
-        - name: um_mysqlDB
+        - name: um-mysqlDB
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: um_mysqlDB_port
+            - name: um-mysqlDB-port
               containerPort: 3306
           volumeMounts:
-            - name: um_mysql-persistent-storage
+            - name: um-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: um_DB_root_psw
-              mountPath: /run/secrets/um_DB_root_psw
+            - name: um-DB-root-psw
+              mountPath: /run/secrets/um-DB-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/um_DB_root_psw
+              value: /run/secrets/um-DB-root-psw
             - name: MYSQL_DATABASE
               value: "um"
       volumes:
-        - name: um_DB_root_psw
+        - name: um-DB-root-psw
           secret:
-            secretName: um_DB_root_psw
+            secretName: um-DB-root-psw
   volumeClaimTemplates:
     - metadata:
-        name: um_mysql-persistent-storage
+        name: um-mysql-persistent-storage
       spec:
         accessModes: [ "ReadWriteOnce" ]
         resources:

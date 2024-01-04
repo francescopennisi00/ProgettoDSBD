@@ -2,9 +2,9 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: wms_service
+  name: wms-service
   labels:
-    app: wms_service
+    app: wms-service
 spec:
   ports:
     - name: apigw-port
@@ -21,10 +21,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wms_deployment
+  name: wms-deployment
   namespace: weather-app
   labels:
-    app: wms_deployment
+    app: wms-deployment
 spec:
   replicas: 1
   selector:
@@ -46,18 +46,18 @@ spec:
             - name: um-port
               containerPort: 50052
           volumeMounts:
-            - name: wms_DB_root_psw
-              mountPath: /run/secrets/wms_DB_root_psw
+            - name: wms-DB-root-psw
+              mountPath: /run/secrets/wms-DB-root-psw
               readOnly: true
           env:
             - name: HOSTNAME
-              value: "wms_mysqlDB"
+              value: "wms-mysqlDB-service"
             - name: PORT
               value: "3306"
             - name: USER
               value: "root"
             - name: PASSWORD
-              value: /run/secrets/wms_DB_root_psw
+              value: /run/secrets/wms-DB-root-psw
             - name: DATABASE
               value: "wms"
           resources:
@@ -68,6 +68,6 @@ spec:
               cpu: 200m
               memory: 256Mi
       volumes:
-        - name: wms_DB_root_psw
+        - name: wms-DB-root-psw
           secret:
-            secretName: wms_DB_root_psw
+            secretName: wms-DB-root-psw

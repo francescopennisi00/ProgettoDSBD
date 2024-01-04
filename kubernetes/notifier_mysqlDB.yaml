@@ -2,59 +2,59 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: notifier_mysqlDB_service
+  name: notifier-mysqlDB-service
   labels:
-    app: notifier_mysqlDB_service
+    app: notifier-mysqlDB-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: notifier_mysqlDB
+    app: notifier-mysqlDB
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: notifier_mysqlDB_stateful_set
+  name: notifier-mysqlDB-stateful-set
   namespace: weather-app
   labels:
-    app: notifier_mysqlDB_stateful_set
+    app: notifier-mysqlDB-stateful-set
 spec:
-  serviceName: "notifier_mysqlDB_service"
+  serviceName: "notifier-mysqlDB-service"
   replicas: 1
   selector:
     matchLabels:
-      app: notifier_mysqlDB
+      app: notifier-mysqlDB
   template:
     metadata:
       labels:
-        app: notifier_mysqlDB
+        app: notifier-mysqlDB
     spec:
       restartPolicy: Always
       containers:
-        - name: notifier_mysqlDB
+        - name: notifier-mysqlDB
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: notifier_mysqlDB_port
+            - name: notifier-mysqlDB-port
               containerPort: 3306
           volumeMounts:
-            - name: notifier_mysql-persistent-storage
+            - name: notifier-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: notifier_DB_root_psw
-              mountPath: /run/secrets/notifier_DB_root_psw
+            - name: notifier-DB-root-psw
+              mountPath: /run/secrets/notifier-DB-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/notifier_DB_root_psw
+              value: /run/secrets/notifier-DB-root-psw
             - name: MYSQL_DATABASE
               value: "notifier"
       volumes:
-        - name: notifier_DB_root_psw
+        - name: notifier-DB-root-psw
           secret:
-            secretName: notifier_DB_root_psw
+            secretName: notifier-DB-root-psw
   volumeClaimTemplates:
     - metadata:
-        name: notifier_mysql-persistent-storage
+        name: notifier-mysql-persistent-storage
       spec:
         accessModes: [ "ReadWriteOnce" ]
         resources:

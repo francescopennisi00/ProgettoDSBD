@@ -2,59 +2,59 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: worker_mysqlDB_service
+  name: worker-mysqlDB-service
   labels:
-    app: worker_mysqlDB_service
+    app: worker-mysqlDB-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: worker_mysqlDB
+    app: worker-mysqlDB
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: worker_mysqlDB_stateful_set
+  name: worker-mysqlDB-stateful-set
   namespace: weather-app
   labels:
-    app: worker_mysqlDB_stateful_set
+    app: worker-mysqlDB-stateful-set
 spec:
-  serviceName: "worker_mysqlDB_service"
+  serviceName: "worker-mysqlDB-service"
   replicas: 1
   selector:
     matchLabels:
-      app: worker_mysqlDB
+      app: worker-mysqlDB
   template:
     metadata:
       labels:
-        app: worker_mysqlDB
+        app: worker-mysqlDB
     spec:
       restartPolicy: Always
       containers:
-        - name: worker_mysqlDB
+        - name: worker-mysqlDB
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: worker_mysqlDB_port
+            - name: worker-mysqlDB-port
               containerPort: 3306
           volumeMounts:
-            - name: worker_mysql-persistent-storage
+            - name: worker-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: worker_DB_root_psw
-              mountPath: /run/secrets/worker_DB_root_psw
+            - name: worker-DB-root-psw
+              mountPath: /run/secrets/worker-DB-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/worker_DB_root_psw
+              value: /run/secrets/worker-DB-root-psw
             - name: MYSQL_DATABASE
               value: "worker"
       volumes:
-        - name: worker_DB_root_psw
+        - name: worker-DB-root-psw
           secret:
-            secretName: worker_DB_root_psw
+            secretName: worker-DB-root-psw
   volumeClaimTemplates:
     - metadata:
-        name: worker_mysql-persistent-storage
+        name: worker-mysql-persistent-storage
       spec:
         accessModes: [ "ReadWriteOnce" ]
         resources:

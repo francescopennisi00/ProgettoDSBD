@@ -2,59 +2,59 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: wms_mysqlDB_service
+  name: wms-mysqlDB-service
   labels:
-    app: wms_mysqlDB_service
+    app: wms-mysqlDB-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: wms_mysqlDB
+    app: wms-mysqlDB
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: wms_mysqlDB_stateful_set
+  name: wms-mysqlDB-stateful-set
   namespace: weather-app
   labels:
-    app: wms_mysqlDB_stateful_set
+    app: wms-mysqlDB-stateful-set
 spec:
-  serviceName: "wms_mysqlDB_service"
+  serviceName: "wms-mysqlDB-service"
   replicas: 1
   selector:
     matchLabels:
-      app: wms_mysqlDB
+      app: wms-mysqlDB
   template:
     metadata:
       labels:
-        app: wms_mysqlDB
+        app: wms-mysqlDB
     spec:
       restartPolicy: Always
       containers:
-        - name: wms_mysqlDB
+        - name: wms-mysqlDB
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: wms_mysqlDB_port
+            - name: wms-mysqlDB-port
               containerPort: 3306
           volumeMounts:
-            - name: wms_mysql-persistent-storage
+            - name: wms-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: wms_DB_root_psw
-              mountPath: /run/secrets/wms_DB_root_psw
+            - name: wms-DB-root-psw
+              mountPath: /run/secrets/wms-DB-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/wms_DB_root_psw
+              value: /run/secrets/wms-DB-root-psw
             - name: MYSQL_DATABASE
               value: "wms"
       volumes:
-        - name: wms_DB_root_psw
+        - name: wms-DB-root-psw
           secret:
-            secretName: wms_DB_root_psw
+            secretName: wms-DB-root-psw
   volumeClaimTemplates:
     - metadata:
-        name: wms_mysql-persistent-storage
+        name: wms-mysql-persistent-storage
       spec:
         accessModes: [ "ReadWriteOnce" ]
         resources:

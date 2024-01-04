@@ -2,9 +2,9 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: um_service
+  name: um-service
   labels:
-    app: um_service
+    app: um-service
 spec:
   ports:
     - name: notifier-port
@@ -25,10 +25,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: um_deployment
+  name: um-deployment
   namespace: weather-app
   labels:
-    app: um_deployment
+    app: um-deployment
 spec:
   replicas: 1
   selector:
@@ -52,18 +52,18 @@ spec:
             - name: apigw-port
               containerPort: 50053
           volumeMounts:
-            - name: um_DB_root_psw
-              mountPath: /run/secrets/um_DB_root_psw
+            - name: um-DB-root-psw
+              mountPath: /run/secrets/um-DB-root-psw
               readOnly: true
           env:
           - name: HOSTNAME
-            value: "um_mysqlDB"
+            value: "um-mysqlDB-service"
           - name: PORT
             value: "3306"
           - name: USER
             value: "root"
           - name: PASSWORD
-            value: /run/secrets/um_DB_root_psw
+            value: /run/secrets/um-DB-root-psw
           - name: DATABASE
             value: "um"
           resources:
@@ -74,6 +74,6 @@ spec:
               cpu: 200m
               memory: 256Mi
       volumes:
-        - name: um_DB_root_psw
+        - name: um-DB-root-psw
           secret:
-            secretName: um_DB_root_psw
+            secretName: um-DB-root-psw
