@@ -2,56 +2,56 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: notifier-mysqlDB-service
+  name: notifier-mysqldb-service
   labels:
-    app: notifier-mysqlDB-service
+    app: notifier-mysqldb-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: notifier-mysqlDB
+    app: notifier-mysqldb
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: notifier-mysqlDB-stateful-set
+  name: notifier-mysqldb-stateful-set
   namespace: weather-app
   labels:
-    app: notifier-mysqlDB-stateful-set
+    app: notifier-mysqldb-stateful-set
 spec:
-  serviceName: "notifier-mysqlDB-service"
+  serviceName: "notifier-mysqldb-service"
   replicas: 1
   selector:
     matchLabels:
-      app: notifier-mysqlDB
+      app: notifier-mysqldb
   template:
     metadata:
       labels:
-        app: notifier-mysqlDB
+        app: notifier-mysqldb
     spec:
       restartPolicy: Always
       containers:
-        - name: notifier-mysqlDB
+        - name: notifier-mysqldb
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: notifier-mysqlDB-port
+            - name: notifier-mysqldb-port
               containerPort: 3306
           volumeMounts:
             - name: notifier-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: notifier-DB-root-psw
-              mountPath: /run/secrets/notifier-DB-root-psw
+            - name: notifier-db-root-psw
+              mountPath: /run/secrets/notifier-db-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/notifier-DB-root-psw
+              value: /run/secrets/notifier-db-root-psw
             - name: MYSQL_DATABASE
               value: "notifier"
       volumes:
-        - name: notifier-DB-root-psw
+        - name: notifier-db-root-psw
           secret:
-            secretName: notifier-DB-root-psw
+            secretName: notifier-db-root-psw
   volumeClaimTemplates:
     - metadata:
         name: notifier-mysql-persistent-storage

@@ -1,4 +1,4 @@
-kind: Service
+kind: Service  # TODO: maybe to be removed because microservice haven't a exposed port
 apiVersion: v1
 metadata:
   namespace: weather-app
@@ -10,7 +10,7 @@ spec:
     app: notifier
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: Deployment  # TODO: creatable with kubectl apply -f notifier.yaml
 metadata:
   name: notifier-deployment
   namespace: weather-app
@@ -32,8 +32,8 @@ spec:
           image: francesc00/notifier_service_image:base
           imagePullPolicy: Always
           volumeMounts:
-            - name: notifier-DB-root-psw
-              mountPath: /run/secrets/notifier-DB-root-psw
+            - name: notifier-db-root-psw
+              mountPath: /run/secrets/notifier-db-root-psw
               readOnly: true
             - name: app-password
               mountPath: /run/secrets/app-password
@@ -43,13 +43,13 @@ spec:
               readOnly: true
           env:
             - name: HOSTNAME
-              value: "notifier-mysqlDB-service"
+              value: "notifier-mysqldb-service"
             - name: PORT
               value: "3306"
             - name: USER
               value: "root"
             - name: PASSWORD
-              value: /run/secrets/notifier-DB-root-psw
+              value: /run/secrets/notifier-db-root-psw
             - name: DATABASE
               value: "notifier"
             - name: EMAIL
@@ -68,9 +68,9 @@ spec:
               cpu: 300m
               memory: 512Mi
       volumes:
-        - name: notifier-DB-root-psw
+        - name: notifier-db-root-psw
           secret:
-            secretName: notifier-DB-root-psw
+            secretName: notifier-db-root-psw
         - name: email
           secret:
             secretName: email

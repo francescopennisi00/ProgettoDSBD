@@ -52,18 +52,18 @@ spec:
             - name: apigw-port
               containerPort: 50053
           volumeMounts:
-            - name: um-DB-root-psw
-              mountPath: /run/secrets/um-DB-root-psw
+            - name: um-db-root-psw
+              mountPath: /run/secrets/um-db-root-psw
               readOnly: true
           env:
           - name: HOSTNAME
-            value: "um-mysqlDB-service"
+            value: "um-mysqldb-service"
           - name: PORT
             value: "3306"
           - name: USER
             value: "root"
           - name: PASSWORD
-            value: /run/secrets/um-DB-root-psw
+            value: /run/secrets/um-db-root-psw
           - name: DATABASE
             value: "um"
           resources:
@@ -74,6 +74,6 @@ spec:
               cpu: 200m
               memory: 256Mi
       volumes:
-        - name: um-DB-root-psw
+        - name: um-db-root-psw
           secret:
-            secretName: um-DB-root-psw
+            secretName: um-db-root-psw

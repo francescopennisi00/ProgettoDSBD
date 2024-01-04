@@ -2,56 +2,56 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: wms-mysqlDB-service
+  name: wms-mysqldb-service
   labels:
-    app: wms-mysqlDB-service
+    app: wms-mysqldb-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: wms-mysqlDB
+    app: wms-mysqldb
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: wms-mysqlDB-stateful-set
+  name: wms-mysqldb-stateful-set
   namespace: weather-app
   labels:
-    app: wms-mysqlDB-stateful-set
+    app: wms-mysqldb-stateful-set
 spec:
-  serviceName: "wms-mysqlDB-service"
+  serviceName: "wms-mysqldb-service"
   replicas: 1
   selector:
     matchLabels:
-      app: wms-mysqlDB
+      app: wms-mysqldb
   template:
     metadata:
       labels:
-        app: wms-mysqlDB
+        app: wms-mysqldb
     spec:
       restartPolicy: Always
       containers:
-        - name: wms-mysqlDB
+        - name: wms-mysqldb
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: wms-mysqlDB-port
+            - name: wms-mysqldb-port
               containerPort: 3306
           volumeMounts:
             - name: wms-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: wms-DB-root-psw
-              mountPath: /run/secrets/wms-DB-root-psw
+            - name: wms-db-root-psw
+              mountPath: /run/secrets/wms-db-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/wms-DB-root-psw
+              value: /run/secrets/wms-db-root-psw
             - name: MYSQL_DATABASE
               value: "wms"
       volumes:
-        - name: wms-DB-root-psw
+        - name: wms-db-root-psw
           secret:
-            secretName: wms-DB-root-psw
+            secretName: wms-db-root-psw
   volumeClaimTemplates:
     - metadata:
         name: wms-mysql-persistent-storage

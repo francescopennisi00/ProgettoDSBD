@@ -2,56 +2,56 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: worker-mysqlDB-service
+  name: worker-mysqldb-service
   labels:
-    app: worker-mysqlDB-service
+    app: worker-mysqldb-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: worker-mysqlDB
+    app: worker-mysqldb
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: worker-mysqlDB-stateful-set
+  name: worker-mysqldb-stateful-set
   namespace: weather-app
   labels:
-    app: worker-mysqlDB-stateful-set
+    app: worker-mysqldb-stateful-set
 spec:
-  serviceName: "worker-mysqlDB-service"
+  serviceName: "worker-mysqldb-service"
   replicas: 1
   selector:
     matchLabels:
-      app: worker-mysqlDB
+      app: worker-mysqldb
   template:
     metadata:
       labels:
-        app: worker-mysqlDB
+        app: worker-mysqldb
     spec:
       restartPolicy: Always
       containers:
-        - name: worker-mysqlDB
+        - name: worker-mysqldb
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: worker-mysqlDB-port
+            - name: worker-mysqldb-port
               containerPort: 3306
           volumeMounts:
             - name: worker-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: worker-DB-root-psw
-              mountPath: /run/secrets/worker-DB-root-psw
+            - name: worker-db-root-psw
+              mountPath: /run/secrets/worker-db-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/worker-DB-root-psw
+              value: /run/secrets/worker-db-root-psw
             - name: MYSQL_DATABASE
               value: "worker"
       volumes:
-        - name: worker-DB-root-psw
+        - name: worker-db-root-psw
           secret:
-            secretName: worker-DB-root-psw
+            secretName: worker-db-root-psw
   volumeClaimTemplates:
     - metadata:
         name: worker-mysql-persistent-storage

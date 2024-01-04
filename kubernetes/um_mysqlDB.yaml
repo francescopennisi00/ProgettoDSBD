@@ -2,56 +2,56 @@ kind: Service
 apiVersion: v1
 metadata:
   namespace: weather-app
-  name: um-mysqlDB-service
+  name: um-mysqldb-service
   labels:
-    app: um-mysqlDB-service
+    app: um-mysqldb-service
 spec:
   ports:
     - port: 3306
   selector:
-    app: um-mysqlDB
+    app: um-mysqldb
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: um-mysqlDB-stateful-set
+  name: um-mysqldb-stateful-set
   namespace: weather-app
   labels:
-    app: um-mysqlDB-stateful-set
+    app: um-mysqldb-stateful-set
 spec:
-  serviceName: "um-mysqlDB-service"
+  serviceName: "um-mysqldb-service"
   replicas: 1
   selector:
     matchLabels:
-      app: um-mysqlDB
+      app: um-mysqldb
   template:
     metadata:
       labels:
-        app: um-mysqlDB
+        app: um-mysqldb
     spec:
       restartPolicy: Always
       containers:
-        - name: um-mysqlDB
+        - name: um-mysqldb
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: um-mysqlDB-port
+            - name: um-mysqldb-port
               containerPort: 3306
           volumeMounts:
             - name: um-mysql-persistent-storage
               mountPath: /var/lib/mysql
-            - name: um-DB-root-psw
-              mountPath: /run/secrets/um-DB-root-psw
+            - name: um-db-root-psw
+              mountPath: /run/secrets/um-db-root-psw
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/um-DB-root-psw
+              value: /run/secrets/um-db-root-psw
             - name: MYSQL_DATABASE
               value: "um"
       volumes:
-        - name: um-DB-root-psw
+        - name: um-db-root-psw
           secret:
-            secretName: um-DB-root-psw
+            secretName: um-db-root-psw
   volumeClaimTemplates:
     - metadata:
         name: um-mysql-persistent-storage

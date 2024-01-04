@@ -1,4 +1,4 @@
-kind: Service
+kind: Service  # TODO: maybe to be removed because microservice haven't a exposed port
 apiVersion: v1
 metadata:
   namespace: weather-app
@@ -10,7 +10,7 @@ spec:
     app: worker
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: Deployment  # TODO: creatable with kubectl apply -f worker.yaml
 metadata:
   name: worker-deployment
   namespace: weather-app
@@ -32,21 +32,21 @@ spec:
           image: francesc00/worker_service_image:base
           imagePullPolicy: Always
           volumeMounts:
-            - name: worker-DB-root-psw
-              mountPath: /run/secrets/worker-DB-root-psw
+            - name: worker-db-root-psw
+              mountPath: /run/secrets/worker-db-root-psw
               readOnly: true
             - name: apikey
               mountPath: /run/secrets/apikey
               readOnly: True
           env:
             - name: HOSTNAME
-              value: "worker-mysqlDB-service"
+              value: "worker-mysqldb-service"
             - name: PORT
               value: "3306"
             - name: USER
               value: "root"
             - name: PASSWORD
-              value: /run/secrets/worker-DB-root-psw
+              value: /run/secrets/worker-db-root-psw
             - name: DATABASE
               value: "worker"
             - name: APIKEY
@@ -63,9 +63,9 @@ spec:
               cpu: 300m
               memory: 512Mi
       volumes:
-        - name: worker-DB-root-psw
+        - name: worker-db-root-psw
           secret:
-            secretName: worker-DB-root-psw
+            secretName: worker-db-root-psw
         - name: apikey
           secret:
             secretName: apikey
