@@ -1,0 +1,79 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: um_service
+  labels:
+    app: um_service
+spec:
+  ports:
+    - name: notifier-port
+      protocol: TCP
+      port: 50051
+      targetPort: 50051
+    - name: wms-port
+      protocol: TCP
+      port: 50052
+      targetPort: 50052
+    - name: apigw-port
+      protocol: TCP
+      port: 50053
+      targetPort: 50053
+  selector:
+    app: um
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: um_deployment
+  namespace: weather-app
+  labels:
+    app: um_deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: um
+  template:
+    metadata:
+      labels:
+        app: um
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: um
+          image: francesc00/user_manager_service_image:base
+          imagePullPolicy: Always
+          ports:
+            - name: notifier-port
+              containerPort: 50051
+            - name: wms-port
+              containerPort: 50052
+            - name: apigw-port
+              containerPort: 50053
+          volumeMounts:
+            - name: um_DB_root_psw
+              mountPath: /run/secrets/um_DB_root_psw
+              readOnly: true
+          env:
+          - name: HOSTNAME
+            value: "um_mysqlDB"
+          - name: PORT
+            value: "3306"
+          - name: USER
+            value: "root"
+          - name: PASSWORD
+            value: /run/secrets/um_DB_root_psw
+          - name: DATABASE
+            value: "um"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: um_DB_root_psw
+          secret:
+            secretName: um_DB_root_psw
