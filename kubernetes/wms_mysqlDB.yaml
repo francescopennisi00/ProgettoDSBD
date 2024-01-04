@@ -1,0 +1,62 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: wms_mysqlDB_service
+  labels:
+    app: wms_mysqlDB_service
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: wms_mysqlDB
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wms_mysqlDB_stateful_set
+  namespace: weather-app
+  labels:
+    app: wms_mysqlDB_stateful_set
+spec:
+  serviceName: "wms_mysqlDB_service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wms_mysqlDB
+  template:
+    metadata:
+      labels:
+        app: wms_mysqlDB
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: wms_mysqlDB
+          image: mysql:latest
+          imagePullPolicy: Always
+          ports:
+            - name: wms_mysqlDB_port
+              containerPort: 3306
+          volumeMounts:
+            - name: wms_mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: wms_DB_root_psw
+              mountPath: /run/secrets/wms_DB_root_psw
+              readOnly: true
+          env:
+            - name: MYSQL_ROOT_PASSWORD_FILE
+              value: /run/secrets/wms_DB_root_psw
+            - name: MYSQL_DATABASE
+              value: "wms"
+      volumes:
+        - name: wms_DB_root_psw
+          secret:
+            secretName: wms_DB_root_psw
+  volumeClaimTemplates:
+    - metadata:
+        name: wms_mysql-persistent-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

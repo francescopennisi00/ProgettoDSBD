@@ -1,0 +1,62 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: um_mysqlDB_service
+  labels:
+    app: um_mysqlDB_service
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: um_mysqlDB
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: um_mysqlDB_stateful_set
+  namespace: weather-app
+  labels:
+    app: um_mysqlDB_stateful_set
+spec:
+  serviceName: "um_mysqlDB_service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: um_mysqlDB
+  template:
+    metadata:
+      labels:
+        app: um_mysqlDB
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: um_mysqlDB
+          image: mysql:latest
+          imagePullPolicy: Always
+          ports:
+            - name: um_mysqlDB_port
+              containerPort: 3306
+          volumeMounts:
+            - name: um_mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: um_DB_root_psw
+              mountPath: /run/secrets/um_DB_root_psw
+              readOnly: true
+          env:
+            - name: MYSQL_ROOT_PASSWORD_FILE
+              value: /run/secrets/um_DB_root_psw
+            - name: MYSQL_DATABASE
+              value: "um"
+      volumes:
+        - name: um_DB_root_psw
+          secret:
+            secretName: um_DB_root_psw
+  volumeClaimTemplates:
+    - metadata:
+        name: um_mysql-persistent-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

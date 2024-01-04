@@ -54,8 +54,10 @@ spec:
               value: "notifier"
             - name: EMAIL
               value: /run/secrets/email
-            - name: NOTIFIERID  # TODO: maybe to be removed
-              value: "1"
+            - name: NOTIFIERID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: APP_PASSWORD
               value: /run/secrets/app_password
           resources:

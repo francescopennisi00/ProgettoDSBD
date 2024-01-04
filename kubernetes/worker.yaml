@@ -51,8 +51,10 @@ spec:
               value: "worker"
             - name: APIKEY
               value: /run/secrets/apikey
-            - name: WORKERID  # TODO: maybe to be removed
-              value: "1"
+            - name: WORKERID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
           resources:
             requests:
               cpu: 150m

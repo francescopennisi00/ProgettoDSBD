@@ -1,0 +1,62 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: notifier_mysqlDB_service
+  labels:
+    app: notifier_mysqlDB_service
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: notifier_mysqlDB
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: notifier_mysqlDB_stateful_set
+  namespace: weather-app
+  labels:
+    app: notifier_mysqlDB_stateful_set
+spec:
+  serviceName: "notifier_mysqlDB_service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifier_mysqlDB
+  template:
+    metadata:
+      labels:
+        app: notifier_mysqlDB
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: notifier_mysqlDB
+          image: mysql:latest
+          imagePullPolicy: Always
+          ports:
+            - name: notifier_mysqlDB_port
+              containerPort: 3306
+          volumeMounts:
+            - name: notifier_mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: notifier_DB_root_psw
+              mountPath: /run/secrets/notifier_DB_root_psw
+              readOnly: true
+          env:
+            - name: MYSQL_ROOT_PASSWORD_FILE
+              value: /run/secrets/notifier_DB_root_psw
+            - name: MYSQL_DATABASE
+              value: "notifier"
+      volumes:
+        - name: notifier_DB_root_psw
+          secret:
+            secretName: notifier_DB_root_psw
+  volumeClaimTemplates:
+    - metadata:
+        name: notifier_mysql-persistent-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,0 +1,62 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: worker_mysqlDB_service
+  labels:
+    app: worker_mysqlDB_service
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: worker_mysqlDB
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: worker_mysqlDB_stateful_set
+  namespace: weather-app
+  labels:
+    app: worker_mysqlDB_stateful_set
+spec:
+  serviceName: "worker_mysqlDB_service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker_mysqlDB
+  template:
+    metadata:
+      labels:
+        app: worker_mysqlDB
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: worker_mysqlDB
+          image: mysql:latest
+          imagePullPolicy: Always
+          ports:
+            - name: worker_mysqlDB_port
+              containerPort: 3306
+          volumeMounts:
+            - name: worker_mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: worker_DB_root_psw
+              mountPath: /run/secrets/worker_DB_root_psw
+              readOnly: true
+          env:
+            - name: MYSQL_ROOT_PASSWORD_FILE
+              value: /run/secrets/worker_DB_root_psw
+            - name: MYSQL_DATABASE
+              value: "worker"
+      volumes:
+        - name: worker_DB_root_psw
+          secret:
+            secretName: worker_DB_root_psw
+  volumeClaimTemplates:
+    - metadata:
+        name: worker_mysql-persistent-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
