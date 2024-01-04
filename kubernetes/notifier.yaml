@@ -1,0 +1,77 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: notifier_service
+  labels:
+    app: notifier_service
+spec:
+  selector:
+    app: notifier
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifier_deployment
+  namespace: weather-app
+  labels:
+    app: notifier_deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifier
+  template:
+    metadata:
+      labels:
+        app: notifier
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: notifier
+          image: francesc00/notifier_service_image:base
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: notifier_DB_root_psw
+              mountPath: /run/secrets/notifier_DB_root_psw
+              readOnly: true
+            - name: app_password
+              mountPath: /run/secrets/app_password
+              readOnly: True
+            - name: email
+              mountPath: /run/secrets/email
+              readOnly: true
+          env:
+            - name: HOSTNAME
+              value: "notifier_mysqlDB"
+            - name: PORT
+              value: "3306"
+            - name: USER
+              value: "root"
+            - name: PASSWORD
+              value: /run/secrets/notifier_DB_root_psw
+            - name: DATABASE
+              value: "notifier"
+            - name: EMAIL
+              value: /run/secrets/email
+            - name: NOTIFIERID  # TODO: maybe to be removed
+              value: "1"
+            - name: APP_PASSWORD
+              value: /run/secrets/app_password
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+      volumes:
+        - name: notifier_DB_root_psw
+          secret:
+            secretName: notifier_DB_root_psw
+        - name: email
+          secret:
+            secretName: email
+        - name: app_password
+          secret:
+            secretName: app_password

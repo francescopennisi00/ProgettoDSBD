@@ -1,0 +1,69 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: worker_service
+  labels:
+    app: worker_service
+spec:
+  selector:
+    app: worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker_deployment
+  namespace: weather-app
+  labels:
+    app: worker_deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: worker
+          image: francesc00/worker_service_image:base
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: worker_DB_root_psw
+              mountPath: /run/secrets/worker_DB_root_psw
+              readOnly: true
+            - name: apikey
+              mountPath: /run/secrets/apikey
+              readOnly: True
+          env:
+            - name: HOSTNAME
+              value: "worker_mysqlDB"
+            - name: PORT
+              value: "3306"
+            - name: USER
+              value: "root"
+            - name: PASSWORD
+              value: /run/secrets/worker_DB_root_psw
+            - name: DATABASE
+              value: "worker"
+            - name: APIKEY
+              value: /run/secrets/apikey
+            - name: WORKERID  # TODO: maybe to be removed
+              value: "1"
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+      volumes:
+        - name: worker_DB_root_psw
+          secret:
+            secretName: worker_DB_root_psw
+        - name: apikey
+          secret:
+            secretName: apikey

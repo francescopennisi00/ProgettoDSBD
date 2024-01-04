@@ -1,0 +1,73 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: wms_service
+  labels:
+    app: wms_service
+spec:
+  ports:
+    - name: apigw-port
+      protocol: TCP
+      port: 50051
+      targetPort: 50051
+    - name: um-port
+      protocol: TCP
+      port: 50052
+      targetPort: 50052
+  selector:
+    app: wms
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wms_deployment
+  namespace: weather-app
+  labels:
+    app: wms_deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wms
+  template:
+    metadata:
+      labels:
+        app: wms
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: wms
+          image: francesc00/wms_service_image:base
+          imagePullPolicy: Always
+          ports:
+            - name: apigw-port
+              containerPort: 50051
+            - name: um-port
+              containerPort: 50052
+          volumeMounts:
+            - name: wms_DB_root_psw
+              mountPath: /run/secrets/wms_DB_root_psw
+              readOnly: true
+          env:
+            - name: HOSTNAME
+              value: "wms_mysqlDB"
+            - name: PORT
+              value: "3306"
+            - name: USER
+              value: "root"
+            - name: PASSWORD
+              value: /run/secrets/wms_DB_root_psw
+            - name: DATABASE
+              value: "wms"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: wms_DB_root_psw
+          secret:
+            secretName: wms_DB_root_psw
