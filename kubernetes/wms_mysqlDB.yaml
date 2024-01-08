@@ -35,7 +35,7 @@ spec:
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: wms-mysqldb-port
+            - name: wms-dbp
               containerPort: 3306
           volumeMounts:
             - name: wms-mysql-persistent-storage
@@ -45,7 +45,7 @@ spec:
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/wms-db-root-psw
+              value: /run/secrets/wms-db-root-psw/psw
             - name: MYSQL_DATABASE
               value: "wms"
       volumes:

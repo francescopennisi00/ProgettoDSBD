@@ -35,7 +35,7 @@ spec:
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: um-mysqldb-port
+            - name: um-dbp
               containerPort: 3306
           volumeMounts:
             - name: um-mysql-persistent-storage
@@ -45,7 +45,7 @@ spec:
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/um-db-root-psw
+              value: /run/secrets/um-db-root-psw/psw
             - name: MYSQL_DATABASE
               value: "um"
       volumes:

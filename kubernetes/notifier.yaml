@@ -38,17 +38,17 @@ spec:
             - name: USER
               value: "root"
             - name: PASSWORD
-              value: /run/secrets/notifier-db-root-psw
+              value: /run/secrets/notifier-db-root-psw/psw
             - name: DATABASE
               value: "notifier"
             - name: EMAIL
-              value: /run/secrets/email
+              value: /run/secrets/email/psw
             - name: NOTIFIERID
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.uid
             - name: APP_PASSWORD
-              value: /run/secrets/app-password
+              value: /run/secrets/app-password/psw
           resources:
             requests:
               cpu: 150m

@@ -63,7 +63,7 @@ spec:
           - name: USER
             value: "root"
           - name: PASSWORD
-            value: /run/secrets/um-db-root-psw
+            value: /run/secrets/um-db-root-psw/psw
           - name: DATABASE
             value: "um"
           resources:

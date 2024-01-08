@@ -35,7 +35,7 @@ spec:
           image: mysql:latest
           imagePullPolicy: Always
           ports:
-            - name: notifier-mysqldb-port
+            - name: notifier-dbp
               containerPort: 3306
           volumeMounts:
             - name: notifier-mysql-persistent-storage
@@ -45,7 +45,7 @@ spec:
               readOnly: true
           env:
             - name: MYSQL_ROOT_PASSWORD_FILE
-              value: /run/secrets/notifier-db-root-psw
+              value: /run/secrets/notifier-db-root-psw/psw
             - name: MYSQL_DATABASE
               value: "notifier"
       volumes:

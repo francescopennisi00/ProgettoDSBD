@@ -57,7 +57,7 @@ spec:
             - name: USER
               value: "root"
             - name: PASSWORD
-              value: /run/secrets/wms-db-root-psw
+              value: /run/secrets/wms-db-root-psw/psw
             - name: DATABASE
               value: "wms"
           resources:

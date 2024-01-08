@@ -35,11 +35,11 @@ spec:
             - name: USER
               value: "root"
             - name: PASSWORD
-              value: /run/secrets/worker-db-root-psw
+              value: /run/secrets/worker-db-root-psw/psw
             - name: DATABASE
               value: "worker"
             - name: APIKEY
-              value: /run/secrets/apikey
+              value: /run/secrets/apikey/apikey
             - name: WORKERID
               valueFrom:
                 fieldRef:
