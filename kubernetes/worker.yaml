@@ -1,21 +1,5 @@
-kind: Service  # TODO: maybe to be removed because microservice haven't a exposed port
-apiVersion: v1
-metadata:
-  namespace: weather-app
-  name: worker-service
-  labels:
-    app: worker-service
-spec:
-  selector:
-    app: worker
-  ports:
-    - name: notifier-port
-      protocol: TCP
-      port: 50000
-      targetPort: 50000
----
 apiVersion: apps/v1
-kind: Deployment  # TODO: creatable with kubectl apply -f worker.yaml
+kind: Deployment
 metadata:
   name: worker-deployment
   namespace: weather-app
@@ -36,8 +20,6 @@ spec:
         - name: worker
           image: francesc00/worker_service_image:base
           imagePullPolicy: Always
-          ports:
-            - containerPort: 50000
           volumeMounts:
             - name: worker-db-root-psw
               mountPath: /run/secrets/worker-db-root-psw

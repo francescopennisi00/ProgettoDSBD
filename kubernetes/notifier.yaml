@@ -1,21 +1,5 @@
-kind: Service  # TODO: maybe to be removed because microservice haven't a exposed port
-apiVersion: v1
-metadata:
-  namespace: weather-app
-  name: notifier-service
-  labels:
-    app: notifier-service
-spec:
-  selector:
-    app: notifier
-  ports:
-    - name: notifier-port
-      protocol: TCP
-      port: 50000
-      targetPort: 50000
----
 apiVersion: apps/v1
-kind: Deployment  # TODO: creatable with kubectl apply -f notifier.yaml
+kind: Deployment
 metadata:
   name: notifier-deployment
   namespace: weather-app
@@ -36,8 +20,6 @@ spec:
         - name: notifier
           image: francesc00/notifier_service_image:base
           imagePullPolicy: Always
-          ports:
-            - containerPort: 50000
           volumeMounts:
             - name: notifier-db-root-psw
               mountPath: /run/secrets/notifier-db-root-psw
