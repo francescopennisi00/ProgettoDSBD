@@ -18,7 +18,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:latest
-    container_name: kafka
+    container_name: kafka-service
     depends_on:
       - zookeeper
     expose:
@@ -113,7 +113,7 @@ services:
     restart: always
 
   um_service:
-    container_name: um_service
+    container_name: um-service
     build:
       context: ../user_manager_service
       dockerfile: Dockerfile
@@ -193,7 +193,7 @@ services:
     restart: always
 
   wms_service:
-    container_name: wms_service
+    container_name: wms-service
     build:
       context: ../WMS_service
       dockerfile: Dockerfile

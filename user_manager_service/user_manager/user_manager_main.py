@@ -110,7 +110,7 @@ def calculate_hash(input_string):
 
 def delete_UserConstraints_By_UserID(userId):
     try:
-        with grpc.insecure_channel('wms_service:50052') as channel:
+        with grpc.insecure_channel('wms-service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestDeleteUser_Constraints(WMS_um_pb2.User(user_id=userId))
             code_to_return = response.response_code  # user id < 0 if some error occurred

@@ -25,7 +25,7 @@ def commit_completed(er, partitions):
 # communication with user management in order to get user email
 def fetch_email(userid):
     try:
-        with grpc.insecure_channel('um_service:50051') as channel:
+        with grpc.insecure_channel('um-service:50051') as channel:
             stub = notifier_um_pb2_grpc.NotifierUmStub(channel)
             response = stub.RequestEmail(notifier_um_pb2.Request(user_id=userid))
             print("Fetched email: " + response.email + "\n")
@@ -162,7 +162,7 @@ if __name__ == "__main__":
     print("ENV variables initialization done")
 
     # start Kafka subscription (if "event_to_be_notified" exists, else exit)
-    c = confluent_kafka.Consumer({'bootstrap.servers':'kafka:9092', 'group.id':'group1', 'enable.auto.commit':'false', 'auto.offset.reset':'latest', 'on_commit':commit_completed})
+    c = confluent_kafka.Consumer({'bootstrap.servers':'kafka-service:9092', 'group.id':'group1', 'enable.auto.commit':'false', 'auto.offset.reset':'latest', 'on_commit':commit_completed})
     try:
         broker = 'kafka:9092'
         topic = 'event_to_be_notified'

@@ -281,7 +281,7 @@ def authenticate_and_retrieve_user_id(header):
 
     # start gRPC communication with user_manager in order to retrieve user id
     try:
-        with grpc.insecure_channel('um_service:50052') as channel:
+        with grpc.insecure_channel('um-service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
             safe_print("Fetched user id: " + str(response.user_id) + "\n")
@@ -514,7 +514,7 @@ if __name__ == "__main__":
         sys.exit("Exiting...\n")
 
     # Kafka admin and producer initialization in order to publish in topic "event_update"
-    broker = 'kafka:9092'
+    broker = 'kafka-service:9092'
     topic = 'event_update'
     producer_conf = {'bootstrap.servers': broker, 'acks': 1}
     admin_conf = {'bootstrap.servers': broker}
