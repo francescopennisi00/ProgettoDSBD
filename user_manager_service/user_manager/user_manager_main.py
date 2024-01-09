@@ -74,7 +74,10 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
                 cursor = db.cursor()
                 cursor.execute("SELECT email FROM users WHERE id= %s", (str(request.user_id),))
                 row = cursor.fetchone()
-                email = row[0]
+                if row:
+                    email = row[0]
+                else:
+                    email = "not present anymore"
         except mysql.connector.Error as error:
             safe_print_error("Exception raised! -> {0}".format(str(error)))
             email = "null"

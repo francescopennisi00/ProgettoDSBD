@@ -115,6 +115,9 @@ def find_event_not_sent():
                 cursor.close()
                 db.close()
                 return False
+            if email == "not present anymore":
+                cursor.execute("DELETE FROM events WHERE id=%s", (x[0], ))
+                continue
             loc_name = x[2]
             loc_country = x[3]
             loc_state = x[4]
