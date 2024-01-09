@@ -44,10 +44,9 @@ spec:
             - name: EMAIL
               value: /run/secrets/email/psw
             - name: NOTIFIERID
-              value: "1"
-              # valueFrom:
-                # fieldRef:
-                  # fieldPath: metadata.uid
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: APP_PASSWORD
               value: /run/secrets/app-password/psw
           resources:

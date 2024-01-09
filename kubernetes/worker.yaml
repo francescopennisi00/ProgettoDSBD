@@ -41,10 +41,9 @@ spec:
             - name: APIKEY
               value: /run/secrets/apikey/apikey
             - name: WORKERID
-              value: "1"
-              # valueFrom:
-                #fieldRef:
-                 # fieldPath: metadata.uid
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
           resources:
             requests:
               cpu: 150m
