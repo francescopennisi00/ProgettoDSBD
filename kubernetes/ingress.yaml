@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress
+  namespace: weather-app
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  ingressClassName: "nginx"
+  rules:
+    - host: weather.com
+      http:
+        paths:
+          - path: /register
+            pathType: Prefix
+            backend:
+              service:
+                name: um-service
+                port:
+                  number: 50053
+          - path: /login
+            pathType: Prefix
+            backend:
+              service:
+                name: um-service
+                port:
+                  number: 50053
+          - path: /delete_account
+            pathType: Prefix
+            backend:
+              service:
+                name: um-service
+                port:
+                  number: 50053
+          - path: /update_rules
+            pathType: Prefix
+            backend:
+              service:
+                name: wms-service
+                port:
+                  number: 50051
+          - path: /update_rules/delete_user_constraints_by_location
+            pathType: Prefix
+            backend:
+              service:
+                name: wms-service
+                port:
+                  number: 50051
