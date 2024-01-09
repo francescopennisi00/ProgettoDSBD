@@ -117,6 +117,7 @@ def find_event_not_sent():
                 return False
             if email == "not present anymore":
                 cursor.execute("DELETE FROM events WHERE id=%s", (x[0], ))
+                db.commit()
                 continue
             loc_name = x[2]
             loc_country = x[3]
@@ -138,6 +139,10 @@ def find_event_not_sent():
 
     except mysql.connector.Error as error:
         sys.stderr.write("Exception raised! -> " + str(error) +"\n")
+        try:
+            mydb.rollback()
+        except Exception as exe:
+            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
         raise SystemExit
 
 
