@@ -13,6 +13,10 @@ import threading
 from flask import Flask
 from flask import request
 import socket
+from prometheus_client import Counter, generate_latest, REGISTRY
+from flask import Response
+
+REQUEST = Counter('wms_requests', 'Total number of requests receveid by wms-service')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -367,6 +371,8 @@ def create_app():
 
     @app.route('/update_rules', methods=['POST'])
     def update_rules_handler():
+        # Increment wms_request metric
+        REQUEST.inc()
         # Verify if data received is a JSON
         if request.is_json:
             try:
@@ -459,6 +465,12 @@ def create_app():
                 return f"Error in reading data: {str(e)}", 400
         else:
             return "Error: the request must be in JSON format", 400
+
+    @app.route('/metrics')
+    def metrics():
+        # Esporta tutte le metriche come testo per Prometheus
+        return Response(generate_latest(REGISTRY), mimetype='text/plain')
+
 
 
 
