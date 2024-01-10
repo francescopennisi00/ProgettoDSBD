@@ -15,7 +15,15 @@ from flask import Flask
 from flask import request
 import hashlib
 import datetime
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from flask import Response
 
+REQUEST = Counter('UM_requests', 'Total number of requests receveid by um-service')
+FAILURE = Counter('UM_failure_requests', 'Total number of requests receveid by um-service that are failed')
+RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_UM', 'Total number of response sended to wms-service')
+RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of response sended to notifier-service')
+LOGGED_USERS_COUNT = Gauge('logged_users_count', 'Total number of logged users')
+REGISTERED_USERS_COUNT = Gauge('registered_users_count', 'Total number of registered users')
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
@@ -50,16 +58,21 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                         userid = row[0]
                         password = row[1]
                     else:
+                        RESPONSE_TO_WMS.inc()
                         return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: email not present
             except mysql.connector.Error as error:
                 safe_print_error("Exception raised! -> {0}".format(str(error)))
+                RESPONSE_TO_WMS.inc()
                 return WMS_um_pb2.Reply(user_id=-2)
             # verify that password is correct verifying digital signature with secret = password
             jwt.decode(request.jwt_token, password, algorithms=['HS256'])
+            RESPONSE_TO_WMS.inc()
             return WMS_um_pb2.Reply(user_id=userid)
         except jwt.ExpiredSignatureError:
+            RESPONSE_TO_WMS.inc()
             return WMS_um_pb2.Reply(user_id=-1)  # token is expired
         except jwt.InvalidTokenError:
+            RESPONSE_TO_WMS.inc()
             return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: password incorrect
 
 
@@ -81,6 +94,7 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
         except mysql.connector.Error as error:
             safe_print_error("Exception raised! -> {0}".format(str(error)))
             email = "null"
+        RESPONSE_TO_NOTIFIER.inc()
         return notifier_um_pb2.Reply(email=email)
 
 
@@ -128,6 +142,8 @@ def create_app():
 
     @app.route('/register', methods=['POST'])
     def user_register():
+        # Increment wms_request metric
+        REQUEST.inc()
         # Verify if data received is a JSON
         if request.is_json:
             try:
@@ -151,7 +167,9 @@ def create_app():
                                 mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)",
                                                  (email, hash_psw))
                                 mydb.commit()
+                                REGISTERED_USERS_COUNT.inc()
                                 return "Registration made successfully! Now try to sign in!", 200
+                            FAILURE.inc()
                             return f"Email already in use! Try to sign in!", 401
 
                     except mysql.connector.Error as err:
@@ -160,15 +178,20 @@ def create_app():
                             mydb.rollback()
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                        FAILURE.inc()
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
+                FAILURE.inc()
                 return f"Error in reading data: {str(e)}", 400
         else:
+            FAILURE.inc()
             return "Error: the request must be in JSON format", 400
 
     @app.route('/login', methods=['POST'])
     def user_login():
+        # Increment wms_request metric
+        REQUEST.inc()
         # verify if data received is a JSON
         if request.is_json:
             try:
@@ -190,6 +213,7 @@ def create_app():
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
                             if not email_row:
+                                FAILURE.inc()
                                 return f"Email or password wrong! Retry!", 401
                             else:
                                 payload = {
@@ -197,19 +221,25 @@ def create_app():
                                     'exp': datetime.datetime.utcnow() + datetime.timedelta(days=3)
                                 }
                                 token = jwt.encode(payload, hash_psw, algorithm='HS256')
+                                LOGGED_USERS_COUNT.inc()
                                 return f"Login successfully made! JWT Token: {token}", 200
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        FAILURE.inc()
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
+                FAILURE.inc()
                 return f"Error in reading data: {str(e)}", 400
         else:
+            FAILURE.inc()
             return "Error: the request must be in JSON format", 400
 
     @app.route('/delete_account', methods=['POST'])
     def delete_account():
+        # Increment wms_request metric
+        REQUEST.inc()
         # verify if data received is a JSON
         if request.is_json:
             try:
@@ -231,14 +261,18 @@ def create_app():
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
                             if not email_row:
+                                FAILURE.inc()
                                 return f"Email or password wrong! Retry!", 401
                             else:
                                 if delete_UserConstraints_By_UserID(email_row[0]) != -1:
                                     mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
                                                      (email, hash_psw))
                                     mydb.commit()
+                                    REGISTERED_USERS_COUNT.dec()
+                                    LOGGED_USERS_COUNT.dec()
                                     return "ACCOUNT DELETED WITH RELATIVE USER_CONSTRAINTS!", 200
                                 else:
+                                    FAILURE.inc()
                                     return "Error in grpc comunication, account not deleted", 500
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
@@ -246,12 +280,21 @@ def create_app():
                             mydb.rollback()
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                        FAILURE.inc()
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
+                FAILURE.inc()
                 return f"Error in reading data: {str(e)}", 400
         else:
+            FAILURE.inc()
             return "Error: the request must be in JSON format", 400
+
+    @app.route('/metrics')
+    def metrics():
+        # Esporta tutte le metriche come testo per Prometheus
+        return Response(generate_latest(REGISTRY), mimetype='text/plain')
+
 
     return app
 
