@@ -16,8 +16,11 @@ import socket
 from prometheus_client import Counter, generate_latest, REGISTRY
 from flask import Response
 
-REQUEST = Counter('wms_requests', 'Total number of requests receveid by wms-service')
-
+REQUEST = Counter('WMS_requests', 'Total number of requests receveid by wms-service')
+FAILURE = Counter('WMS_failure_requests', 'Total number of requests receveid by wms-service that are failed')
+KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka message produced by wms-service')
+KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka message produced by wms-service that have been delivered correctly')
+REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sended to um-service')
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
@@ -210,6 +213,7 @@ def delivery_callback(err, msg):
         safe_print_error('%% Message failed delivery: %s\n' % err)
         raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
     else:
+        KAFKA_MESSAGE_DELIVERED.inc()
         safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
         message_dict = json.loads(msg.value())
@@ -238,6 +242,7 @@ def produce_kafka_message(topic_name, kafka_producer, message):
     # Publish on the specific topic
     try:
         kafka_producer.produce(topic_name, value=message, callback=delivery_callback)
+        KAFKA_MESSAGE.inc()
     except BufferError:
         safe_print_error(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
@@ -287,6 +292,7 @@ def authenticate_and_retrieve_user_id(header):
     try:
         with grpc.insecure_channel('um-service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
+            REQUEST_TO_UM.inc()
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
             safe_print("Fetched user id: " + str(response.user_id) + "\n")
             user_id_to_return = response.user_id  # user id < 0 if some error occurred
@@ -301,6 +307,8 @@ def create_app():
 
     @app.route('/update_rules/delete_user_constraints_by_location', methods=['POST'])
     def delete_user_constraints_by_location_handler():
+        # Increment wms_request metric
+        REQUEST.inc()
         # Verify if data received is a JSON
         if request.is_json:
             try:
@@ -313,15 +321,20 @@ def create_app():
                     if authorization_header and authorization_header.startswith('Bearer '):
                         id_user = authenticate_and_retrieve_user_id(authorization_header)
                         if id_user == "null":
+                            FAILURE.inc()
                             return 'Error in communication with authentication server: retry!', 500
                         elif id_user == -1:
+                            FAILURE.inc()
                             return 'JWT Token expired: login required!', 401
                         elif id_user == -2:
+                            FAILURE.inc()
                             return 'Error in communication with DB in order to authentication: retry!', 500
                         elif id_user == -3:
+                            FAILURE.inc()
                             return 'JWT Token is not valid: login required!', 401
                     else:
                         # No token provided in authorization header
+                        FAILURE.inc()
                         return 'JWT Token not provided: login required!', 401
                     location_name = data_dict.get('location')[0]
                     latitude = data_dict.get('location')[1]
@@ -349,6 +362,7 @@ def create_app():
                             row = mycursor.fetchone()
                             if not row:
                                 safe_print_error("There is no entry with that latitude and longitude\n")
+                                FAILURE.inc()
                                 return "Error, there is no locations to delete with that parameters", 400
                             else:
                                 location_id = row[0]
@@ -362,11 +376,14 @@ def create_app():
                             mydb.rollback()
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                            FAILURE.inc()
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
+                FAILURE.inc()
                 return f"Error in reading data: {str(e)}", 400
         else:
+            FAILURE.inc()
             return "Error: the request must be in JSON format", 400
 
     @app.route('/update_rules', methods=['POST'])
@@ -385,15 +402,20 @@ def create_app():
                     if authorization_header and authorization_header.startswith('Bearer '):
                         id_user = authenticate_and_retrieve_user_id(authorization_header)
                         if id_user == "null":
+                            FAILURE.inc()
                             return 'Error in communication with authentication server: retry!', 500
                         elif id_user == -1:
+                            FAILURE.inc()
                             return 'JWT Token expired: login required!', 401
                         elif id_user == -2:
+                            FAILURE.inc()
                             return 'Error in communication with DB in order to authentication: retry!', 500
                         elif id_user == -3:
+                            FAILURE.inc()
                             return 'JWT Token is not valid: login required!', 401
                     else:
                         # No token provided in authorization header
+                        FAILURE.inc()
                         return 'JWT Token not provided: login required!', 401
                     trigger_period = data_dict.get('trigger_period')
                     location_name = data_dict.get('location')[0]
@@ -459,19 +481,20 @@ def create_app():
                             mydb.rollback()
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                            FAILURE.inc()
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
+                FAILURE.inc()
                 return f"Error in reading data: {str(e)}", 400
         else:
+            FAILURE.inc()
             return "Error: the request must be in JSON format", 400
 
     @app.route('/metrics')
     def metrics():
         # Esporta tutte le metriche come testo per Prometheus
         return Response(generate_latest(REGISTRY), mimetype='text/plain')
-
-
 
 
     return app
