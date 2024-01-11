@@ -223,7 +223,7 @@ if __name__ == "__main__":
     print("ENV variables initialization done")
 
     safe_print("Starting Prometheus serving thread!\n")
-    threadAPIGateway = threading.Thread(target=serve_prometheus())
+    threadAPIGateway = threading.Thread(target=serve_prometheus)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
 
