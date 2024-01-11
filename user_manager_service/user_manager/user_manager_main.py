@@ -10,7 +10,6 @@ import mysql.connector
 import os
 import sys
 import jwt
-import json
 import socket
 from flask import Flask
 from flask import request
@@ -18,6 +17,7 @@ import hashlib
 import datetime
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
 from flask import Response
+
 
 # definition of the metrics to be exposed
 REQUEST = Counter('UM_requests', 'Total number of requests received by um-service')
@@ -28,6 +28,7 @@ RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of respo
 LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')
 DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which user-manager response')
+
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -185,7 +186,7 @@ def create_app():
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                            safe_print_error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -299,7 +300,7 @@ def create_app():
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                            safe_print_error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -338,6 +339,8 @@ if __name__ == '__main__':
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
+
+    print("ENV variables initialization done")
 
     # Creating table users if not exits
     try:
