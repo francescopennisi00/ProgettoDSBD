@@ -291,6 +291,8 @@ if __name__ == "__main__":
                 location_country = data.get("location")[3]
                 location_state = data.get("location")[4]
                 del data["location"]
+                worker_timestamp = data.get("timestamp")  # Kafka msg has a key-value pair with worker publish timestamp: important for latency of notification metric
+                del data["timestamp"]  # now all the keys of data are user_ids
                 user_id_set = set(data.keys())
                 # connection with DB and store events to be notified
                 try:
@@ -299,7 +301,7 @@ if __name__ == "__main__":
                         for user_id in user_id_set:
                             temp_dict = dict()
                             temp_dict["violated_rules"] = data.get(user_id)
-                            temp_dict["timestamp_worker"] = data.get("timestamp")
+                            temp_dict["timestamp_worker"] = worker_timestamp
                             violated_rules = json.dumps(temp_dict)
                             mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent, notifier_id) VALUES(%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, FALSE, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, notifier_id))
                         mydb.commit()  # to make changes effective after inserting ALL the violated_rules
