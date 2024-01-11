@@ -1,5 +1,4 @@
 import confluent_kafka
-# from confluent_kafka.admin import AdminClient
 import json
 import grpc
 import notifier_um_pb2
@@ -14,16 +13,20 @@ import time
 import sys
 import threading
 from flask import Flask
-from flask import request
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
 from flask import Response
 
+
+# definition of the metrics to be exposed
 NOTIFICATIONS = Counter('NOTIFIER_notifications_sent', 'Total number of notifications sent')
 NOTIFICATIONS_ERROR = Counter('NOTIFIER_notifications_error', 'Total number of error in sending email')
 DELTA_TIME = Gauge('NOTIFIER_notification_latency_nanoseconds', 'Latency beetween instant in which worker publishes the message and instant in which notifier sends email')
+
+
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
+
 
 def safe_print(msg):
     with lock:
@@ -34,13 +37,14 @@ def safe_print_error(error):
     with lock_error:
         sys.stderr.write(error)
 
+
 def commit_completed(er, partitions):
     if er:
-        print(str(er))
+        safe_print(str(er))
     else:
-        print("Commit done!\n")
-        print("Committed partition offsets: " + str(partitions) + "\n")
-        print("Notification fetched and stored in DB in order to be sent!\n")
+        safe_print("Commit done!\n")
+        safe_print("Committed partition offsets: " + str(partitions) + "\n")
+        safe_print("Notification fetched and stored in DB in order to be sent!\n")
 
 
 # communication with user management in order to get user email
@@ -49,10 +53,10 @@ def fetch_email(userid):
         with grpc.insecure_channel('um-service:50051') as channel:
             stub = notifier_um_pb2_grpc.NotifierUmStub(channel)
             response = stub.RequestEmail(notifier_um_pb2.Request(user_id=userid))
-            print("Fetched email: " + response.email + "\n")
+            safe_print("Fetched email: " + response.email + "\n")
             email_to_return = response.email
     except grpc.RpcError as error:
-        sys.stderr.write("gRPC error! -> " + str(error) + "\n")
+        safe_print_error("gRPC error! -> " + str(error) + "\n")
         email_to_return = "null"
     return email_to_return
 
@@ -66,12 +70,12 @@ def update_event_sent(event_id):
             db.commit()
             boolean_to_return = True
     except mysql.connector.Error as error:
-        sys.stderr.write("Exception raised! -> " + str(error) + "\n")
+        safe_print_error("Exception raised! -> " + str(error) + "\n")
         boolean_to_return = False
         try:
             db.rollback()
         except Exception as exc:
-            sys.stderr.write(f"Exception raised in rollback: {exc}\n")
+            safe_print_error(f"Exception raised in rollback: {exc}\n")
     return boolean_to_return
 
 
@@ -118,7 +122,7 @@ def send_email(email, violated_rules, name_location, country, state):
             smtp.sendmail(email_sender, email_receiver, em.as_string())
             boolean_to_return = True
     except smtplib.SMTPException as exception:
-        sys.stderr.write("SMTP protocol error! -> " + str(exception) + "\n")
+        safe_print_error("SMTP protocol error! -> " + str(exception) + "\n")
         boolean_to_return = False
     return boolean_to_return
 
@@ -166,15 +170,17 @@ def find_event_not_sent():
                 raise SystemExit
 
     except mysql.connector.Error as error:
-        sys.stderr.write("Exception raised! -> " + str(error) +"\n")
+        safe_print_error("Exception raised! -> " + str(error) +"\n")
         try:
             mydb.rollback()
         except Exception as exe:
-            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+            safe_print_error(f"Exception raised in rollback: {exe}\n")
         raise SystemExit
+
 
 def create_app():
     app = Flask(__name__)
+
     @app.route('/metrics')
     def metrics():
         # Export all the metrics as text for Prometheus
@@ -182,13 +188,16 @@ def create_app():
 
     return app
 
+
 def serve_prometheus():
     port = 50055
     hostname = socket.gethostname()
-    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
     app.run(host='0.0.0.0', port=port, threaded=True)
-    
+
+
 notifier_id = os.environ.get(("NOTIFIERID"))
+
 
 # create Flask application
 app = create_app()
@@ -213,47 +222,32 @@ if __name__ == "__main__":
 
     print("ENV variables initialization done")
 
-    safe_print("Starting prometheus serving thread!\n")
+    safe_print("Starting Prometheus serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_prometheus())
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
 
-    # start Kafka subscription (if "event_to_be_notified" exists, else exit)
+    # start Kafka subscription
     c = confluent_kafka.Consumer({'bootstrap.servers':'kafka-service:9092', 'group.id':'group1', 'enable.auto.commit':'false', 'auto.offset.reset':'latest', 'on_commit':commit_completed})
     try:
         broker = 'kafka:9092'
         topic = 'event_to_be_notified'
-        #admin_conf = {'bootstrap.servers': broker}
-        #kadmin = AdminClient(admin_conf)
-        #list_topics_metadata = kadmin.list_topics()
-        #topics = list_topics_metadata.topics  # Returns a dict()
-        #print(f"LIST_TOPICS: {list_topics_metadata}")
-        #print(f"TOPICS: {topics}")
-        #topic_names = set(topics.keys())
-        #print(f"TOPIC_NAMES: {topic_names}")
-        #found = False
-        #for name in topic_names:
-        #    if name == 'event_to_be_notified':
-        #        found = True
-        #        print(f"Topic {name} found: subscribe!")
         c.subscribe(['event_to_be_notified'])
-        #if found == False:
-        #    sys.exit("Terminate because Kafka topic to subscribe has been not found\n")
     except confluent_kafka.KafkaException as ke:
-        sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
+        safe_print_error("Kafka exception raised! -> " + str(ke) + "\n")
         c.close()
         sys.exit("Terminate after Exception raised in Kafka topic subscribe\n")
     except Exception as ke:
-        sys.stderr.write("Kafka exception raised! -> " + str(ke) + "\n")
+        safe_print_error("Kafka exception raised! -> " + str(ke) + "\n")
         c.close()
         sys.exit("Terminate after GENERAL Exception raised in Kafka subscription\n")
 
-    print("Starting while true\n")
+    safe_print("Starting while true\n")
 
     try:
         while True:
 
-            print("New iteration!\n")
+            safe_print("New iteration!\n")
 
             # Creating table if not exits
             try:
@@ -262,11 +256,11 @@ if __name__ == "__main__":
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_name VARCHAR(70) NOT NULL, location_country VARCHAR(10) NOT NULL, location_state VARCHAR(30) NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL, notifier_id VARCHAR(60) NOT NULL, INDEX notifier_ind (notifier_id))")
                     mydb.commit()  # to make changes effective
             except mysql.connector.Error as err:
-                sys.stderr.write("Exception raised! -> " + str(err) +"\n")
+                safe_print_error("Exception raised! -> " + str(err) +"\n")
                 try:
                     mydb.rollback()
                 except Exception as excep:
-                    sys.stderr.write(f"Exception raised in rollback: {excep}\n")
+                    safe_print_error(f"Exception raised in rollback: {excep}\n")
                 raise SystemExit
 
             # Looking for entries that have sent == False
@@ -280,18 +274,18 @@ if __name__ == "__main__":
                 # Initial message consumption may take up to
                 # `session.timeout.ms` for the consumer group to
                 # rebalance and start consuming
-                print("Waiting for message or event/error in poll()\n")
+                safe_print("Waiting for message or event/error in poll()\n")
                 continue
             elif msg.error():
-                print('error: {}\n'.format(msg.error()))
+                safe_print('error: {}\n'.format(msg.error()))
                 if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
                     raise SystemExit
             else:
                 # Check for Kafka message
                 record_key = msg.key()
-                print("REDCORD KEY " + str(record_key))
+                safe_print("RECORD KEY " + str(record_key))
                 record_value = msg.value()
-                print("RECORD VALUE " + str(record_value))
+                safe_print("RECORD VALUE " + str(record_value))
                 data = json.loads(record_value)
                 location_name = data.get("location")[0]
                 location_country = data.get("location")[3]
@@ -310,18 +304,18 @@ if __name__ == "__main__":
                             mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent, notifier_id) VALUES(%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, FALSE, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, notifier_id))
                         mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
-                    sys.stderr.write("Exception raised! -> " + str(err) + "\n")
+                    safe_print_error("Exception raised! -> " + str(err) + "\n")
                     try:
                         mydb.rollback()
                     except Exception as exe:
-                        sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                        safe_print_error(f"Exception raised in rollback: {exe}\n")
                     raise SystemExit  # to terminate without Kafka commit
 
                 # make commit
                 try:
                     c.commit(asynchronous=True)
                 except Exception as e:
-                    sys.stderr.write("Error in commit! -> " + str(e) +"\n")
+                    safe_print_error("Error in commit! -> " + str(e) + "\n")
                     raise SystemExit
 
     except (KeyboardInterrupt, SystemExit):  # to terminate correctly with either CTRL+C or docker stop
