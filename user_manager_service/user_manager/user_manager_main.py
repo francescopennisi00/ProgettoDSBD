@@ -1,4 +1,5 @@
 import threading
+import time
 from concurrent import futures
 import grpc
 import WMS_um_pb2
@@ -21,10 +22,12 @@ from flask import Response
 # definition of the metrics to be exposed
 REQUEST = Counter('UM_requests', 'Total number of requests received by um-service')
 FAILURE = Counter('UM_failure_requests', 'Total number of requests received by um-service that failed')
+INTERNAL_ERROR = Counter('UM_internal_http_error', 'Total number of internal http error in um-service')
 RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_UM', 'Total number of response sent to wms-service')
 RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of response sent to notifier-service')
-LOGGED_USERS_COUNT = Gauge('logged_users_count', 'Total number of logged users')
-REGISTERED_USERS_COUNT = Gauge('registered_users_count', 'Total number of registered users')
+LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
+REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')
+DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which user-manager response')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -155,6 +158,7 @@ def create_app():
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
                     password = data_dict.get("psw")
+                    timestamp_client = data_dict.get("timestamp_client")
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
@@ -170,7 +174,9 @@ def create_app():
                                                  (email, hash_psw))
                                 mydb.commit()
                                 REGISTERED_USERS_COUNT.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Registration made successfully! Now try to sign in!", 200
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             FAILURE.inc()
                             return f"Email already in use! Try to sign in!", 401
 
@@ -181,6 +187,8 @@ def create_app():
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
+                        INTERNAL_ERROR.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -203,6 +211,7 @@ def create_app():
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
                     password = data_dict.get("psw")
+                    timestamp_client = data_dict.get("timestamp_client")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -216,6 +225,7 @@ def create_app():
                             email_row = mycursor.fetchone()
                             if not email_row:
                                 FAILURE.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return f"Email or password wrong! Retry!", 401
                             else:
                                 payload = {
@@ -224,11 +234,14 @@ def create_app():
                                 }
                                 token = jwt.encode(payload, hash_psw, algorithm='HS256')
                                 LOGGED_USERS_COUNT.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return f"Login successfully made! JWT Token: {token}", 200
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
                         FAILURE.inc()
+                        INTERNAL_ERROR.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -251,6 +264,7 @@ def create_app():
                     email = data_dict.get("email")
                     safe_print("Email received:" + email)
                     password = data_dict.get("psw")
+                    timestamp_client = data_dict.get("timestamp_client")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -264,6 +278,7 @@ def create_app():
                             email_row = mycursor.fetchone()
                             if not email_row:
                                 FAILURE.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return f"Email or password wrong! Retry!", 401
                             else:
                                 if delete_UserConstraints_By_UserID(email_row[0]) != -1:
@@ -272,10 +287,13 @@ def create_app():
                                     mydb.commit()
                                     REGISTERED_USERS_COUNT.dec()
                                     LOGGED_USERS_COUNT.dec()
+                                    DELTA_TIME.set(time.time_ns() - timestamp_client)
                                     return "ACCOUNT DELETED WITH RELATIVE USER_CONSTRAINTS!", 200
                                 else:
                                     FAILURE.inc()
-                                    return "Error in grpc comunication, account not deleted", 500
+                                    INTERNAL_ERROR.inc()
+                                    DELTA_TIME.set(time.time_ns() - timestamp_client)
+                                    return "Error in grpc communication, account not deleted", 500
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
                         try:
@@ -283,6 +301,8 @@ def create_app():
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
+                        INTERNAL_ERROR.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:

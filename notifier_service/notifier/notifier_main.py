@@ -7,11 +7,32 @@ import notifier_um_pb2_grpc
 from email.message import EmailMessage
 import ssl
 import smtplib
+import socket
 import mysql.connector
 import os
 import time
 import sys
+import threading
+from flask import Flask
+from flask import request
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from flask import Response
 
+NOTIFICATIONS = Counter('NOTIFIER_notifications_sent', 'Total number of notifications sent')
+NOTIFICATIONS_ERROR = Counter('NOTIFIER_notifications_error', 'Total number of error in sending email')
+DELTA_TIME = Gauge('NOTIFIER_notification_latency_nanoseconds', 'Latency beetween instant in which worker publishes the message and instant in which notifier sends email')
+# create lock objects for mutual exclusion in acquire stdout and stderr resource
+lock = threading.Lock()
+lock_error = threading.Lock()
+
+def safe_print(msg):
+    with lock:
+        print(msg)
+
+
+def safe_print_error(error):
+    with lock_error:
+        sys.stderr.write(error)
 
 def commit_completed(er, partitions):
     if er:
@@ -127,7 +148,14 @@ def find_event_not_sent():
             if res != True:
                 cursor.close()
                 db.close()
+                NOTIFICATIONS_ERROR.inc()
                 return "error_in_send_email"
+            #  violated_rules contains also a key value pair with the timestamp of the kafka message publications
+            #  This is important for exposure the notification latency metric
+            end_time = time.time_ns()
+            start_time = violated_rules.get("timestamp_worker")
+            DELTA_TIME.set(end_time-start_time)
+            NOTIFICATIONS.inc()
             # we give 5 attempts to try to update the DB in order
             # to avoid resending the email as much as possible
             for t in range(5):
@@ -145,9 +173,25 @@ def find_event_not_sent():
             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
         raise SystemExit
 
+def create_app():
+    app = Flask(__name__)
+    @app.route('/metrics')
+    def metrics():
+        # Export all the metrics as text for Prometheus
+        return Response(generate_latest(REGISTRY), mimetype='text/plain')
 
+    return app
+
+def serve_prometheus():
+    port = 50055
+    hostname = socket.gethostname()
+    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app.run(host='0.0.0.0', port=port, threaded=True)
+    
 notifier_id = os.environ.get(("NOTIFIERID"))
 
+# create Flask application
+app = create_app()
 
 if __name__ == "__main__":
 
@@ -168,6 +212,11 @@ if __name__ == "__main__":
     os.environ['EMAIL'] = secret_email_value
 
     print("ENV variables initialization done")
+
+    safe_print("Starting prometheus serving thread!\n")
+    threadAPIGateway = threading.Thread(target=serve_prometheus())
+    threadAPIGateway.daemon = True
+    threadAPIGateway.start()
 
     # start Kafka subscription (if "event_to_be_notified" exists, else exit)
     c = confluent_kafka.Consumer({'bootstrap.servers':'kafka-service:9092', 'group.id':'group1', 'enable.auto.commit':'false', 'auto.offset.reset':'latest', 'on_commit':commit_completed})
@@ -256,6 +305,7 @@ if __name__ == "__main__":
                         for user_id in user_id_set:
                             temp_dict = dict()
                             temp_dict["violated_rules"] = data.get(user_id)
+                            temp_dict["timestamp_worker"] = data.get("timestamp")
                             violated_rules = json.dumps(temp_dict)
                             mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent, notifier_id) VALUES(%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, FALSE, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, notifier_id))
                         mydb.commit()  # to make changes effective after inserting ALL the violated_rules

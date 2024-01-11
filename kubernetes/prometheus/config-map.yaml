@@ -6,7 +6,17 @@ metadata:
     name: prometheus-server-conf
   namespace: weather-app
 data:
-  #prometheus.rules: |-
+  prometheus.rules: |-
+    groups:
+    - name: devopscube demo alert
+      rules:
+      - alert: High Pod Memory
+        expr: sum(container_memory_usage_bytes) > 1
+        for: 1m
+        labels:
+          severity: slack
+        annotations:
+          summary: High Memory Usage
   prometheus.yml: |-
     #  evaluation_interval: 5s
     #rule_files:

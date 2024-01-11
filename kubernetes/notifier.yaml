@@ -1,3 +1,19 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: notifier-service
+  labels:
+    app: notifier-service
+spec:
+  ports:
+    - name: prom-port
+      protocol: TCP
+      port: 50055
+      targetPort: 50055
+  selector:
+    app: notifier
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +36,9 @@ spec:
         - name: notifier
           image: francesc00/notifier_service_image:base
           imagePullPolicy: Always
+          ports:
+            - name: prom-port
+              containerPort: 50055
           volumeMounts:
             - name: notifier-db-root-psw
               mountPath: /run/secrets/notifier-db-root-psw

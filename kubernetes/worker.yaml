@@ -1,3 +1,19 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: worker-service
+  labels:
+    app: worker-service
+spec:
+  ports:
+    - name: prom-port
+      protocol: TCP
+      port: 50055
+      targetPort: 50055
+  selector:
+    app: worker
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +36,9 @@ spec:
         - name: worker
           image: francesc00/worker_service_image:base
           imagePullPolicy: Always
+          ports:
+            - name: prom-port
+              containerPort: 50055
           volumeMounts:
             - name: worker-db-root-psw
               mountPath: /run/secrets/worker-db-root-psw

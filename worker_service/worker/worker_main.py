@@ -1,3 +1,5 @@
+import time
+
 import confluent_kafka
 from confluent_kafka.admin import AdminClient, NewTopic
 import json
@@ -5,7 +7,29 @@ import mysql.connector
 import os
 import sys
 import requests
+import socket
+import threading
+from flask import Flask
+from flask import request
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from flask import Response
 # from datetime import datetime, timedelta
+
+ERROR_REQUEST_OPEN_WEATHER = Counter('WORKER_error_request_openWeather', 'Total number of request sent to openWeather that failed')
+REQUEST_OPEN_WEATHER = Counter('WORKER_request_to_openWeather', 'Total number of API call to Open Weather')
+DELTA_TIME = Gauge('WORKER_response_time_openWeather', 'Difference beetween instant when worker sending request to OpenWeather and instant when it received the response')
+# create lock objects for mutual exclusion in acquire stdout and stderr resource
+lock = threading.Lock()
+lock_error = threading.Lock()
+
+def safe_print(msg):
+    with lock:
+        print(msg)
+
+
+def safe_print_error(error):
+    with lock_error:
+        sys.stderr.write(error)
 
 
 def commit_completed(er, partitions):
@@ -18,22 +42,40 @@ def commit_completed(er, partitions):
 
 
 def make_query(query):
+    start_time = time.time_ns()
     try:
+        REQUEST_OPEN_WEATHER.inc()
         resp = requests.get(url=query)
         resp.raise_for_status()
         response = resp.json()
+        end_time = time.time_ns()
+        DELTA_TIME.set(end_time-start_time)
         if response.get('cod') != 200:
+            ERROR_REQUEST_OPEN_WEATHER.inc()
             raise Exception('Query failed: ' + response.get('message'))
         print(json.dumps(response) + "\n")
         return response
     except requests.JSONDecodeError as er:
+        ERROR_REQUEST_OPEN_WEATHER.inc()
+        end_time = time.time_ns()
+        DELTA_TIME.set(end_time-start_time)
         sys.stderr.write(f'JSON Decode error: {er}\n')
+        raise SystemExit
     except requests.HTTPError as er:
+        ERROR_REQUEST_OPEN_WEATHER.inc()
+        end_time = time.time_ns()
+        DELTA_TIME.set(end_time-start_time)
         sys.stderr.write(f'HTTP Error: {er}\n')
+        raise SystemExit
     except requests.exceptions.RequestException as er:
+        ERROR_REQUEST_OPEN_WEATHER.inc()
+        end_time = time.time_ns()
+        DELTA_TIME.set(end_time-start_time)
         sys.stderr.write(f'Request failed: {er}\n')
+        raise SystemExit
     except Exception as er:
         sys.stderr.write(f'Error: {er}\n')
+        raise SystemExit
 
 
 # compare values obtained from OpenWeather API call with those that have been placed into the DB
@@ -180,9 +222,25 @@ def produce_kafka_message(topic_name, kafka_producer, message):
     kafka_producer.flush()
     return True
 
+def create_app():
+    app = Flask(__name__)
+    @app.route('/metrics')
+    def metrics():
+        # Export all the metrics as text for Prometheus
+        return Response(generate_latest(REGISTRY), mimetype='text/plain')
+
+    return app
+
+def serve_prometheus():
+    port = 50055
+    hostname = socket.gethostname()
+    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    app.run(host='0.0.0.0', port=port, threaded=True)
 
 worker_id = os.environ.get(("WORKERID"))
 
+# create Flask application
+app = create_app()
 
 if __name__ == "__main__":
 
@@ -195,6 +253,13 @@ if __name__ == "__main__":
     with open(secret_apikey_path, 'r') as file:
         secret_apikey_value = file.read()
     os.environ['APIKEY'] = secret_apikey_value
+
+    print("ENV variables initialization done")
+
+    safe_print("Starting prometheus serving thread!\n")
+    threadAPIGateway = threading.Thread(target=serve_prometheus())
+    threadAPIGateway.daemon = True
+    threadAPIGateway.start()
 
     # create table current_work if not exists.
     # This table will contain many entries but all relating to the same message from the WMS
@@ -255,6 +320,9 @@ if __name__ == "__main__":
 
     # check if current work is pending and if it is true publish the rules to Kafka
     if current_work != '{}':  # JSON representation of an empty dictionary.
+        current_work_dict = json.loads(current_work)
+        current_work_dict['timestamp'] = time.time_ns()
+        current_work = json.dumps(current_work_dict)
         while produce_kafka_message(topic, producer_kafka, current_work) == False:
             pass
     else:
@@ -357,6 +425,9 @@ if __name__ == "__main__":
                 # call to find_current_work and publish them in topic "event_to_be_sent"
                 current_work = find_current_work()
                 if current_work != '{}':  # JSON representation of an empty dictionary.
+                    current_work_dict = json.loads(current_work)
+                    current_work_dict['timestamp'] = time.time_ns()
+                    current_work = json.dumps(current_work_dict)
                     while produce_kafka_message(topic, producer_kafka, current_work) == False:
                         pass
 

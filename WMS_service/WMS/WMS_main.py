@@ -13,15 +13,18 @@ import threading
 from flask import Flask
 from flask import request
 import socket
-from prometheus_client import Counter, generate_latest, REGISTRY
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
 from flask import Response
 
 # definition of the metrics to be exposed
 REQUEST = Counter('WMS_requests', 'Total number of requests received by wms-service')
 FAILURE = Counter('WMS_failure_requests', 'Total number of requests received by wms-service that failed')
+INTERNAL_ERROR = Counter('WMS_internal_http_error', 'Total number of internal http error in wms-service')
+ACTIVE_RULES = Gauge('WMS_active_rules', 'Total number of rules that have been provided to the system')
 KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka message produced by wms-service')
 KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka message produced by wms-service that have been delivered correctly')
 REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to um-service')
+DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which wms-manager response')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -317,6 +320,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
+                timestamp_client = data_dict.get("timestamp_client")
                 safe_print("DELETE USER CONSTRAINTS BY LOCATION \n\n Data received: " + str(data_dict))
                 if data_dict:
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
@@ -325,19 +329,26 @@ def create_app():
                         id_user = authenticate_and_retrieve_user_id(authorization_header)
                         if id_user == "null":
                             FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'Error in communication with authentication server: retry!', 500
                         elif id_user == -1:
                             FAILURE.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'JWT Token expired: login required!', 401
                         elif id_user == -2:
                             FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'Error in communication with DB in order to authentication: retry!', 500
                         elif id_user == -3:
                             FAILURE.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'JWT Token is not valid: login required!', 401
                     else:
                         # No token provided in authorization header
                         FAILURE.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return 'JWT Token not provided: login required!', 401
                     location_name = data_dict.get('location')[0]
                     latitude = data_dict.get('location')[1]
@@ -349,7 +360,6 @@ def create_app():
                     safe_print_error(
                         "LOCATION  " + location_name + '  ' + str(rounded_latitude) + '  ' + str(rounded_longitude) + '  ' + str(
                             country_code) + '  ' + str(state_code) + "\n\n")
-                    str_json = json.dumps(data_dict)
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
@@ -366,12 +376,15 @@ def create_app():
                             if not row:
                                 safe_print_error("There is no entry with that latitude and longitude\n")
                                 FAILURE.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Error, there is no locations to delete with that parameters", 400
                             else:
                                 location_id = row[0]
                                 mycursor.execute("DELETE FROM user_constraints WHERE user_id = %s and location_id = %s",
                                                  (str(id_user), str(location_id)))
                                 mydb.commit()
+                                ACTIVE_RULES.dec()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Row in user_constraints correctly deleted", 200
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
@@ -380,6 +393,8 @@ def create_app():
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                             FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -398,6 +413,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
+                timestamp_client = data_dict.get("timestamp_client")
                 print("Data received:" + str(data_dict))
                 if data_dict:
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
@@ -406,19 +422,26 @@ def create_app():
                         id_user = authenticate_and_retrieve_user_id(authorization_header)
                         if id_user == "null":
                             FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'Error in communication with authentication server: retry!', 500
                         elif id_user == -1:
                             FAILURE.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'JWT Token expired: login required!', 401
                         elif id_user == -2:
                             FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'Error in communication with DB in order to authentication: retry!', 500
                         elif id_user == -3:
                             FAILURE.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                             return 'JWT Token is not valid: login required!', 401
                     else:
                         # No token provided in authorization header
                         FAILURE.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return 'JWT Token not provided: login required!', 401
                     trigger_period = data_dict.get('trigger_period')
                     location_name = data_dict.get('location')[0]
@@ -470,12 +493,15 @@ def create_app():
                                     "UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s",
                                     (str(trigger_period), str(id_user), str(location_id)))
                                 mydb.commit()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Updated table user_constraints correctly!", 200
                             else:
                                 mycursor.execute(
                                     "INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s)",
                                     (str(id_user), str(location_id), str_json, str(trigger_period)))
                                 mydb.commit()
+                                ACTIVE_RULES.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "New user_constraints correctly inserted!", 200
 
                     except mysql.connector.Error as err:
@@ -485,6 +511,8 @@ def create_app():
                         except Exception as exe:
                             sys.stderr.write(f"Exception raised in rollback: {exe}\n")
                             FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:

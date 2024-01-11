@@ -76,6 +76,8 @@ services:
       context: ../notifier_service
       dockerfile: Dockerfile
     image: notifier_service_image:base
+    expose:
+      - "50055"
     depends_on:
       - notifier_mysqlDB
       - kafka
@@ -158,6 +160,8 @@ services:
       context: ../worker_service
       dockerfile: Dockerfile
     image: worker_service_image:base
+    expose:
+      - "50055"
     depends_on:
       - worker_mysqlDB
       - kafka
