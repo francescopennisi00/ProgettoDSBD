@@ -16,19 +16,21 @@ import socket
 from prometheus_client import Counter, generate_latest, REGISTRY
 from flask import Response
 
-REQUEST = Counter('WMS_requests', 'Total number of requests receveid by wms-service')
-FAILURE = Counter('WMS_failure_requests', 'Total number of requests receveid by wms-service that are failed')
+# definition of the metrics to be exposed
+REQUEST = Counter('WMS_requests', 'Total number of requests received by wms-service')
+FAILURE = Counter('WMS_failure_requests', 'Total number of requests received by wms-service that failed')
 KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka message produced by wms-service')
 KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka message produced by wms-service that have been delivered correctly')
-REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sended to um-service')
+REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to um-service')
+
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
 
 
-def safe_print(message):
+def safe_print(msg):
     with lock:
-        print(message)
+        print(msg)
 
 
 def safe_print_error(error):
@@ -54,6 +56,7 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
             except Exception as exe:
                 sys.stderr.write(f"Exception raised in rollback: {exe}\n")
             return WMS_um_pb2.Response_Code(response_code=-1)
+
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
     mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM locations WHERE id = %s",
@@ -493,9 +496,8 @@ def create_app():
 
     @app.route('/metrics')
     def metrics():
-        # Esporta tutte le metriche come testo per Prometheus
+        # Export all the metrics as text for Prometheus
         return Response(generate_latest(REGISTRY), mimetype='text/plain')
-
 
     return app
 

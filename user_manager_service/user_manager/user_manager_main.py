@@ -18,12 +18,14 @@ import datetime
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
 from flask import Response
 
-REQUEST = Counter('UM_requests', 'Total number of requests receveid by um-service')
-FAILURE = Counter('UM_failure_requests', 'Total number of requests receveid by um-service that are failed')
-RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_UM', 'Total number of response sended to wms-service')
-RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of response sended to notifier-service')
+# definition of the metrics to be exposed
+REQUEST = Counter('UM_requests', 'Total number of requests received by um-service')
+FAILURE = Counter('UM_failure_requests', 'Total number of requests received by um-service that failed')
+RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_UM', 'Total number of response sent to wms-service')
+RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of response sent to notifier-service')
 LOGGED_USERS_COUNT = Gauge('logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('registered_users_count', 'Total number of registered users')
+
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
@@ -292,9 +294,8 @@ def create_app():
 
     @app.route('/metrics')
     def metrics():
-        # Esporta tutte le metriche come testo per Prometheus
+        # Export all the metrics as text for Prometheus
         return Response(generate_latest(REGISTRY), mimetype='text/plain')
-
 
     return app
 
