@@ -16,15 +16,17 @@ import socket
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
 from flask import Response
 
+
 # definition of the metrics to be exposed
 REQUEST = Counter('WMS_requests', 'Total number of requests received by wms-service')
 FAILURE = Counter('WMS_failure_requests', 'Total number of requests received by wms-service that failed')
 INTERNAL_ERROR = Counter('WMS_internal_http_error', 'Total number of internal http error in wms-service')
 ACTIVE_RULES = Gauge('WMS_active_rules', 'Total number of rules that have been provided to the system')
 KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka message produced by wms-service')
-KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka message produced by wms-service that have been delivered correctly')
+KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka messages produced by wms-service that have been delivered correctly')
 REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to um-service')
 DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which wms-manager response')
+
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -57,7 +59,7 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
             try:
                 mydb.rollback()
             except Exception as exe:
-                sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                safe_print_error(f"Exception raised in rollback: {exe}\n")
             return WMS_um_pb2.Response_Code(response_code=-1)
 
 
@@ -391,7 +393,7 @@ def create_app():
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                            safe_print_error(f"Exception raised in rollback: {exe}\n")
                             FAILURE.inc()
                             INTERNAL_ERROR.inc()
                             DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -414,7 +416,7 @@ def create_app():
                 # Extract json data
                 data_dict = request.get_json()
                 timestamp_client = data_dict.get("timestamp_client")
-                print("Data received:" + str(data_dict))
+                safe_print("Data received:" + str(data_dict))
                 if data_dict:
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
@@ -509,7 +511,7 @@ def create_app():
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            sys.stderr.write(f"Exception raised in rollback: {exe}\n")
+                            safe_print_error(f"Exception raised in rollback: {exe}\n")
                             FAILURE.inc()
                             INTERNAL_ERROR.inc()
                             DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -558,6 +560,8 @@ if __name__ == "__main__":
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
+
+    print("ENV variables initialization done")
 
     # create tables location and user_constraints if not exists.
     try:
@@ -623,6 +627,7 @@ if __name__ == "__main__":
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
+    safe_print("Starting user manager serving thread!\n")
     threadUM = threading.Thread(target=serve_um)
     threadUM.daemon = True
     threadUM.start()
