@@ -23,7 +23,7 @@ from flask import Response
 REQUEST = Counter('UM_requests', 'Total number of requests received by um-service')
 FAILURE = Counter('UM_failure_requests', 'Total number of requests received by um-service that failed')
 INTERNAL_ERROR = Counter('UM_internal_http_error', 'Total number of internal http error in um-service')
-RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_UM', 'Total number of response sent to wms-service')
+RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_WMS', 'Total number of response sent to wms-service')
 RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of response sent to notifier-service')
 LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')

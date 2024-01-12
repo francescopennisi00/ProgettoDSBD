@@ -8,25 +8,37 @@ metadata:
 data:
   prometheus.rules: |-
     groups:
-    - name: devopscube demo alert
-      rules:
-      - alert: High Pod Memory
-        expr: sum(container_memory_usage_bytes) > 1
-        for: 1m
-        labels:
-          severity: slack
-        annotations:
-          summary: High Memory Usage
+        - name: weather
+          rules:
+          - record: UM_success_requests_total
+            expr: UM_requests_total - UM_failure_requests_total
+    
+          - record: WMS_success_requests_total
+            expr: WMS_requests_total - WMS_failure_requests_total
+    
+          - record: WORKER_success_requests_to_OpenWeather_total
+            expr: WORKER_requests_to_OpenWeather_total - WORKER_error_request_OpenWeather_total
+    
+          - record: UM_requests_per_second_in_the_last_hour
+            expr: rate(UM_requests_total[1h])
+    
+          - record: WMS_requests_per_second_in_the_last_hour
+            expr: rate(WMS_requests_total[1h])
+    
+          - record: UM_success_requests_percentage
+            expr: UM_success_requests_total / clamp_min(UM_requests_total, 1) * 100
+    
+          - record: WMS_success_requests_percentage
+            expr: WMS_success_requests_total / clamp_min(WMS_requests_total, 1) * 100
+    
+          - record: WORKER_success_requests_to_OpenWeather_percentage
+            expr: WORKER_success_requests_to_OpenWeather_total / clamp_min(WORKER_requests_to_OpenWeather_total, 1) * 100
+
   prometheus.yml: |-
-    #  evaluation_interval: 5s
-    #rule_files:
-     # - /etc/prometheus/prometheus.rules
-    #alerting:
-    #  alertmanagers:
-    #   - scheme: http
-    #      static_configs:
-    #        - targets:
-    #            - "alertmanager.monitoring.svc:9093"
+    global:
+      evaluation_interval: 5s
+    rule_files:
+      - /etc/prometheus/prometheus.rules
     scrape_configs:
       - job_name: 'wms'
         scrape_interval: 30s
@@ -36,3 +48,11 @@ data:
         scrape_interval: 30s
         static_configs:
           - targets: ['um-service:50053']
+      - job_name: 'worker'
+        scrape_interval: 30s
+        static_configs:
+          - targets: ['worker-service:50055']
+      - job_name: 'notifier'
+        scrape_interval: 30s
+        static_configs:
+          - targets: ['notifier-service:50055']
