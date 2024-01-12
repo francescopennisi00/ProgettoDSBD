@@ -46,3 +46,17 @@ spec:
                 name: wms-service
                 port:
                   number: 50051
+          - path: /logout
+            pathType: Prefix
+            backend:
+              service:
+                name: um-service
+                port:
+                  number: 50053
+          - path: /show_rules
+            pathType: Prefix
+            backend:
+              service:
+                name: wms-service
+                port:
+                  number: 50051

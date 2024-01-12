@@ -310,6 +310,37 @@ def authenticate_and_retrieve_user_id(header):
     return user_id_to_return
 
 
+def format_rules_response(list_of_rules):
+    rules_returned = "No rules inserted!"  # initialization value of user rules list returned as string
+    location_rules = ""
+    counter = 1
+
+    # rule[0] = {"location":location_info_list}
+    # rule[1] = {rule:("null" or value), ..., "location":location_info_list, "timestamp_client": timestamp_client value}
+    # rule[2] = {"trigger_period": trigger_period_value}
+    for rule in list_of_rules:
+        location_string = json.dumps(rule[0])
+        temp_rules_dictionary = rule[1]
+        del temp_rules_dictionary["location"]
+        del temp_rules_dictionary["timestamp_client"]
+        target_key_set = set()  # set of key-value pairs with value = "null" extracted by rule[1]
+        key_set = temp_rules_dictionary.keys()
+        for key in key_set:
+            if temp_rules_dictionary.get(key) == "null":
+                target_key_set.add(key)
+        for key in target_key_set:
+            del temp_rules_dictionary[key]
+        rules_string = json.dumps(temp_rules_dictionary)
+        trigger_period_string = json.dumps(rule[2])
+        temp_string = f"LOCATION {str(counter)}\n" + location_string + "\n" + rules_string + "\n" + trigger_period_string + "\n\n"
+        location_rules = location_rules + temp_string
+        counter = counter + 1
+    if location_rules != "":
+        rules_returned = location_rules
+
+    return rules_returned
+
+
 def create_app():
     app = Flask(__name__)
 
@@ -322,9 +353,9 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                timestamp_client = data_dict.get("timestamp_client")
                 safe_print("DELETE USER CONSTRAINTS BY LOCATION \n\n Data received: " + str(data_dict))
                 if data_dict:
+                    timestamp_client = data_dict.get("timestamp_client")
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
                     if authorization_header and authorization_header.startswith('Bearer '):
@@ -394,9 +425,9 @@ def create_app():
                             mydb.rollback()
                         except Exception as exe:
                             safe_print_error(f"Exception raised in rollback: {exe}\n")
-                            FAILURE.inc()
-                            INTERNAL_ERROR.inc()
-                            DELTA_TIME.set(time.time_ns() - timestamp_client)
+                        FAILURE.inc()
+                        INTERNAL_ERROR.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -415,9 +446,9 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                timestamp_client = data_dict.get("timestamp_client")
                 safe_print("Data received:" + str(data_dict))
                 if data_dict:
+                    timestamp_client = data_dict.get("timestamp_client")
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
                     authorization_header = request.headers.get('Authorization')
                     if authorization_header and authorization_header.startswith('Bearer '):
@@ -512,9 +543,110 @@ def create_app():
                             mydb.rollback()
                         except Exception as exe:
                             safe_print_error(f"Exception raised in rollback: {exe}\n")
+                        FAILURE.inc()
+                        INTERNAL_ERROR.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
+                        return f"Error in connecting to database: {str(err)}", 500
+
+            except Exception as e:
+                FAILURE.inc()
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            FAILURE.inc()
+            return "Error: the request must be in JSON format", 400
+
+    @app.route('/show_rules', methods=['POST'])
+    def show_rules_handler():
+        # Increment wms_request metric
+        REQUEST.inc()
+        # Verify if data received is a JSON
+        if request.is_json:
+            try:
+                # Extract json data
+                data_dict = request.get_json()
+                safe_print("Data received:" + str(data_dict))
+                if data_dict:
+                    timestamp_client = data_dict.get("timestamp_client")
+                    # Communication with UserManager in order to authenticate the user and retrieve user_id
+                    authorization_header = request.headers.get('Authorization')
+                    if authorization_header and authorization_header.startswith('Bearer '):
+                        id_user = authenticate_and_retrieve_user_id(authorization_header)
+                        if id_user == "null":
                             FAILURE.inc()
                             INTERNAL_ERROR.inc()
                             DELTA_TIME.set(time.time_ns() - timestamp_client)
+                            return 'Error in communication with authentication server: retry!', 500
+                        elif id_user == -1:
+                            FAILURE.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
+                            return 'JWT Token expired: login required!', 401
+                        elif id_user == -2:
+                            FAILURE.inc()
+                            INTERNAL_ERROR.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
+                            return 'Error in communication with DB in order to authentication: retry!', 500
+                        elif id_user == -3:
+                            FAILURE.inc()
+                            DELTA_TIME.set(time.time_ns() - timestamp_client)
+                            return 'JWT Token is not valid: login required!', 401
+                    else:
+                        # No token provided in authorization header
+                        FAILURE.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
+                        return 'JWT Token not provided: login required!', 401
+
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
+
+                            # buffered=True needed because we reuse after a fetchone
+                            mycursor = mydb.cursor(buffered=True)
+
+                            # retrieve all the rules of the user
+                            mycursor.execute("SELECT location_id, rules, trigger_period FROM user_constraints WHERE user_id = %s",(str(id_user),))
+                            rows = mycursor.fetchall()
+                            if not rows:
+                                FAILURE.inc()
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
+                                return "There is no rules that you have indicated! PLease insert location, rules and trigger period!", 400
+                            else:
+                                rules_list = list()  # list of (location_info, rules, trigger_period key-value pairs)
+                                for row in rows:
+                                    location_id = row[0]
+                                    rules = row[1]
+                                    rules_dict = json.loads(rules)
+                                    trigger_period = row[2]
+
+                                    # query to DB in order to retrieve information about location by location_id
+                                    mycursor.execute("SELECT location_name, country_code, state_code FROM locations WHERE id = %s", (str(location_id), ))
+                                    location_row = mycursor.fetchone()
+
+                                    temp_list = list()
+                                    location_dict = dict()
+                                    location_dict["location"] = location_row
+                                    temp_list.append(location_dict)
+                                    rules_dict = json.loads(rules)
+                                    temp_list.append(rules_dict)
+                                    trigger_period_dict = dict()
+                                    trigger_period_dict["trigger_period"] = trigger_period
+                                    temp_list.append(trigger_period_dict)
+
+                                    rules_list.append(temp_list)
+
+                                rules_returned = format_rules_response(rules_list)
+                                DELTA_TIME.set(time.time_ns() - timestamp_client)
+                                return f"YOUR RULES: \n\n {rules_returned}", 200
+
+                    except mysql.connector.Error as err:
+                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        try:
+                            mydb.rollback()
+                        except Exception as exe:
+                            safe_print_error(f"Exception raised in rollback: {exe}\n")
+                        FAILURE.inc()
+                        INTERNAL_ERROR.inc()
+                        DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
