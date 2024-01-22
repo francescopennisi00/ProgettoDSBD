@@ -27,7 +27,7 @@ KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total n
 REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to um-service')
 DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which wms-manager responses')
 QUERY_DURATIONS_HISTOGRAM = Histogram('WMS_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds', buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
-# Beacause of measuring time in nanoseconds
+# buckets indicated because of measuring time in nanoseconds
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()

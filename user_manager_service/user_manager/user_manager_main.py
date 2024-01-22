@@ -25,11 +25,10 @@ FAILURE = Counter('UM_failure_requests', 'Total number of requests received by u
 INTERNAL_ERROR = Counter('UM_internal_http_error', 'Total number of internal http errors in um-service')
 RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_WMS', 'Total number of responses sent to wms-service')
 RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of responses sent to notifier-service')
-LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')
 DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which user-manager responses')
-QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds',buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
-# Beacause of measuring time in nanoseconds
+QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds', buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
+# buckets indicated because of measuring time in nanoseconds
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -80,7 +79,6 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
             return WMS_um_pb2.Reply(user_id=userid)
         except jwt.ExpiredSignatureError:
             RESPONSE_TO_WMS.inc()
-            LOGGED_USERS_COUNT.dec()  # if token is expired, logout implicitly
             return WMS_um_pb2.Reply(user_id=-1)  # token is expired
         except jwt.InvalidTokenError:
             RESPONSE_TO_WMS.inc()
@@ -251,7 +249,6 @@ def create_app():
                                     'exp': datetime.datetime.utcnow() + datetime.timedelta(days=3)
                                 }
                                 token = jwt.encode(payload, hash_psw, algorithm='HS256')
-                                LOGGED_USERS_COUNT.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return f"Login successfully made! JWT Token: {token}", 200
 
@@ -261,73 +258,6 @@ def create_app():
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
                         return f"Error in connecting to database: {str(err)}", 500
-
-            except Exception as e:
-                FAILURE.inc()
-                return f"Error in reading data: {str(e)}", 400
-        else:
-            FAILURE.inc()
-            return "Error: the request must be in JSON format", 400
-
-    @app.route('/logout', methods=['POST'])
-    def user_logout():
-        # Increment wms_request metric
-        REQUEST.inc()
-        # verify if data received is a JSON
-        if request.is_json:
-            try:
-                # Extract json data (it contains only client timestamp)
-                data_dict = request.get_json()
-                if data_dict:
-                    timestamp_client = data_dict.get("timestamp_client")
-                    authorization_header = request.headers.get('Authorization')
-                    if authorization_header and authorization_header.startswith('Bearer '):
-                        jwt_token = authorization_header.split(' ')[1]  # Extract token from "Bearer <token>" string
-                        try:
-                            # extract token information without verifying them: needed in order to retrieve user email
-                            token_dict = jwt.decode(jwt_token, algorithms=['HS256'], options={"verify_signature": False})
-                            email = token_dict.get("email")
-                            try:
-                                DBstart_time = time.time_ns()
-                                with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
-                                                             user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
-                                                             database=os.environ.get('DATABASE')) as db:
-                                    cursor = db.cursor()
-                                    cursor.execute("SELECT password FROM users WHERE email= %s", (email,))
-                                    row = cursor.fetchone()
-                                    DBend_time = time.time_ns()
-                                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
-                                    if row:
-                                        password = row[0]
-                                    else:
-                                        FAILURE.inc()
-                                        DELTA_TIME.set(time.time_ns() - timestamp_client)
-                                        return f"Token is not valid! No user with email {email} is logged in", 401  # token is not valid: email not present
-                            except mysql.connector.Error as error:
-                                safe_print_error("Exception raised! -> {0}".format(str(error)))
-                                FAILURE.inc()
-                                INTERNAL_ERROR.inc()
-                                DELTA_TIME.set(time.time_ns() - timestamp_client)
-                                return 'Error in communication with DB in order to authentication: retry!', 500
-                            # verify that password is correct verifying digital signature with secret = password
-                            jwt.decode(jwt_token, password, algorithms=['HS256'])
-                            LOGGED_USERS_COUNT.dec()
-                            DELTA_TIME.set(time.time_ns() - timestamp_client)
-                            return "Logout completed!", 200
-                        except jwt.ExpiredSignatureError:  # if token is expired, logout is still done
-                            LOGGED_USERS_COUNT.dec()
-                            DELTA_TIME.set(time.time_ns() - timestamp_client)
-                            return "Logout completed!", 200
-                        except jwt.InvalidTokenError:
-                            FAILURE.inc()
-                            DELTA_TIME.set(time.time_ns() - timestamp_client)
-                            return 'JWT Token is not valid: login required!', 401
-
-                    else:
-                        # No token provided in authorization header
-                        FAILURE.inc()
-                        DELTA_TIME.set(time.time_ns() - timestamp_client)
-                        return 'JWT Token not provided: login required!', 401
 
             except Exception as e:
                 FAILURE.inc()
@@ -377,7 +307,6 @@ def create_app():
                                     DBend_time = time.time_ns()
                                     QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                     REGISTERED_USERS_COUNT.dec()
-                                    LOGGED_USERS_COUNT.dec()
                                     DELTA_TIME.set(time.time_ns() - timestamp_client)
                                     return "ACCOUNT DELETED WITH RELATIVE USER_CONSTRAINTS!", 200
                                 else:
