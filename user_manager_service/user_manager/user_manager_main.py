@@ -28,7 +28,8 @@ RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of respo
 LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')
 DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which user-manager responses')
-QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
+QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds',buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
+# Beacause of measuring time in nanoseconds
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()

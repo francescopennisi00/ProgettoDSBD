@@ -21,7 +21,9 @@ from flask import Response
 NOTIFICATIONS = Counter('NOTIFIER_notifications_sent', 'Total number of notifications sent')
 NOTIFICATIONS_ERROR = Counter('NOTIFIER_notifications_error', 'Total number of errors in sending email')
 DELTA_TIME = Gauge('NOTIFIER_notification_latency_nanoseconds', 'Latency beetween instant in which worker publishes the message and instant in which notifier sends email')
-QUERY_DURATIONS_HISTOGRAM = Histogram('NOTIFIER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
+QUERY_DURATIONS_HISTOGRAM = Histogram('NOTIFIER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds', buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
+# Beacause of measuring time in nanoseconds
+
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
