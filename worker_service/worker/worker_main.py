@@ -21,7 +21,6 @@ QUERY_DURATIONS_HISTOGRAM = Histogram('WORKER_query_durations_nanoseconds_DB', '
 # buckets indicated because of measuring time in nanoseconds
 
 
-
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
 lock_error = threading.Lock()
