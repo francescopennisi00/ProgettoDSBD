@@ -33,6 +33,46 @@ data:
     
           - record: WORKER_success_requests_to_OpenWeather_percentage
             expr: WORKER_success_requests_to_OpenWeather_total / clamp_min(WORKER_requests_to_OpenWeather_total, 1) * 100
+    
+          - record: WORKER_DB_avg_query_durations_nanoseconds
+            expr: avg(WORKER_query_durations_nanoseconds_DB)
+          
+          - record: WORKER_DB_median_query_durations_nanoseconds
+            expr: histogram_quantile(0.5, WORKER_query_durations_nanoseconds_DB)
+    
+          - record: WORKER_DB_90_quantile_query_durations_nanoseconds
+            expr: histogram_quantile(0.9, WORKER_query_durations_nanoseconds_DB)
+    
+          - record: NOTIFIER_DB_avg_query_durations_nanoseconds
+            expr: avg(NOTIFIER_query_durations_nanoseconds_DB)
+    
+          - record: NOTIFIER_DB_median_query_durations_nanoseconds
+            expr: histogram_quantile(0.5, NOTIFIER_query_durations_nanoseconds_DB)
+    
+          - record: NOTIFIER_DB_90_quantile_query_durations_nanoseconds
+            expr: histogram_quantile(0.9, NOTIFIER_query_durations_nanoseconds_DB)
+    
+          - record: UM_DB_avg_query_durations_nanoseconds
+            expr: avg(UM_query_durations_nanoseconds_DB)
+    
+          - record: UM_DB_median_query_durations_nanoseconds
+            expr: histogram_quantile(0.5, UM_query_durations_nanoseconds_DB)
+    
+          - record: UM_DB_90_quantile_query_durations_nanoseconds
+            expr: histogram_quantile(0.9, UM_query_durations_nanoseconds_DB)
+    
+          - record: WMS_DB_avg_query_durations_nanoseconds
+            expr: avg(WMS_query_durations_nanoseconds_DB)
+    
+          - record: WMS_DB_median_query_durations_nanoseconds
+            expr: histogram_quantile(0.5, WMS_query_durations_nanoseconds_DB)
+    
+          - record: WMS_DB_90_quantile_query_durations_nanoseconds
+            expr: histogram_quantile(0.9, WMS_query_durations_nanoseconds_DB)
+
+
+
+
 
   prometheus.yml: |-
     global:

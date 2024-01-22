@@ -13,7 +13,7 @@ import time
 import sys
 import threading
 from flask import Flask
-from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
 from flask import Response
 
 
@@ -21,7 +21,7 @@ from flask import Response
 NOTIFICATIONS = Counter('NOTIFIER_notifications_sent', 'Total number of notifications sent')
 NOTIFICATIONS_ERROR = Counter('NOTIFIER_notifications_error', 'Total number of error in sending email')
 DELTA_TIME = Gauge('NOTIFIER_notification_latency_nanoseconds', 'Latency beetween instant in which worker publishes the message and instant in which notifier sends email')
-
+QUERY_DURATIONS_HISTOGRAM = Histogram('NOTIFIER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -64,10 +64,13 @@ def fetch_email(userid):
 # connection with DB and update the entry of the notification sent
 def update_event_sent(event_id):
     try:
+        DBstart_time = time.time_ns()
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
             cursor = db.cursor()
             cursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(event_id),))
             db.commit()
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
             boolean_to_return = True
     except mysql.connector.Error as error:
         safe_print_error("Exception raised! -> " + str(error) + "\n")
@@ -130,10 +133,13 @@ def send_email(email, violated_rules, name_location, country, state):
 # find events to send, send them by email and update events in DB
 def find_event_not_sent():
     try:
+        DBstart_time = time.time_ns()
         db = mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE'))
         cursor = db.cursor()
         cursor.execute("SELECT * FROM events WHERE sent=FALSE AND notifier_id=%s", (notifier_id,))
         results = cursor.fetchall()
+        DBend_time = time.time_ns()
+        QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
         for x in results:
             email = fetch_email(x[1])
             if email == "null":
@@ -141,8 +147,11 @@ def find_event_not_sent():
                 db.close()
                 return False
             if email == "not present anymore":
+                DBstart_time = time.time_ns()
                 cursor.execute("DELETE FROM events WHERE id=%s", (x[0], ))
                 db.commit()
+                DBend_time = time.time_ns()
+                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 continue
             loc_name = x[2]
             loc_country = x[3]
@@ -251,10 +260,13 @@ if __name__ == "__main__":
 
             # Creating table if not exits
             try:
+                DBstart_time = time.time_ns()
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'), user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as mydb:
                     mycursor = mydb.cursor()
                     mycursor.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_name VARCHAR(70) NOT NULL, location_country VARCHAR(10) NOT NULL, location_state VARCHAR(30) NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, sent BOOLEAN NOT NULL, notifier_id VARCHAR(60) NOT NULL, INDEX notifier_ind (notifier_id))")
                     mydb.commit()  # to make changes effective
+                    DBend_time = time.time_ns()
+                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
             except mysql.connector.Error as err:
                 safe_print_error("Exception raised! -> " + str(err) +"\n")
                 try:
@@ -303,7 +315,10 @@ if __name__ == "__main__":
                             temp_dict["violated_rules"] = data.get(user_id)
                             temp_dict["timestamp_worker"] = worker_timestamp
                             violated_rules = json.dumps(temp_dict)
+                            DBstart_time = time.time_ns()
                             mycursor.execute("INSERT INTO events (user_id, location_name, location_country, location_state, rules, time_stamp, sent, notifier_id) VALUES(%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, FALSE, %s)", (str(user_id), location_name, location_country, location_state, violated_rules, notifier_id))
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                         mydb.commit()  # to make changes effective after inserting ALL the violated_rules
                 except mysql.connector.Error as err:
                     safe_print_error("Exception raised! -> " + str(err) + "\n")

@@ -13,7 +13,7 @@ import threading
 from flask import Flask
 from flask import request
 import socket
-from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
 from flask import Response
 
 
@@ -26,7 +26,7 @@ KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka messa
 KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka messages produced by wms-service that have been delivered correctly')
 REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to um-service')
 DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which wms-manager response')
-
+QUERY_DURATIONS_HISTOGRAM = Histogram('WMS_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -47,12 +47,15 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
     def RequestDeleteUser_Constraints(self, request, context):
         user_id = request.user_id
         try:
+            DBstart_time = time.time_ns()
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as db:
                 cursor = db.cursor()
                 cursor.execute("DELETE FROM user_constraints WHERE user_id= %s", (user_id,))
                 db.commit()
+                DBend_time = time.time_ns()
+                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 return WMS_um_pb2.Response_Code(response_code=200)
         except mysql.connector.Error as error:
             safe_print_error("Exception raised! -> {0}".format(str(error)))
@@ -64,9 +67,12 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
 
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
+    DBstart_time = time.time_ns()
     mycursor.execute("SELECT location_name, latitude, longitude, country_code, state_code FROM locations WHERE id = %s",
                      (str(location_id),))
     location = mycursor.fetchone()  # list of information about current location of the Kafka message
+    DBend_time = time.time_ns()
+    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
     userid_list = list()
     max_temp_list = list()
     min_temp_list = list()
@@ -82,10 +88,13 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
     rain_list = list()
     snow_list = list()
     rows_id_list = list()
+    DBstart_time = time.time_ns()
     mycursor.execute(
         "SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND location_id = %s",
         (str(location_id),))
     results = mycursor.fetchall()
+    DBend_time = time.time_ns()
+    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
     for result in results:
         rules_dict = json.loads(result[3])
         userid_list.append(result[1])
@@ -234,8 +243,11 @@ def delivery_callback(err, msg):
                 mycursor = mydb.cursor()
                 for id in rows_id_list:
                     safe_print("ID in ROWS_ID_LIST  " + str(id))
+                    DBstart_time = time.time_ns()
                     mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s",
                                      (str(id),))
+                    DBend_time = time.time_ns()
+                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
             safe_print_error("Exception raised!\n" + str(err))
@@ -263,6 +275,7 @@ def produce_kafka_message(topic_name, kafka_producer, message):
 
 def find_pending_work():
     try:
+        DBstart_time = time.time_ns()
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
@@ -274,6 +287,8 @@ def find_pending_work():
             mycursor.execute(
                 "SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period GROUP BY location_id")
             location_id_list = mycursor.fetchall()
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
             Kafka_message_list = list()
             for location in location_id_list:
                 location_id = location[0]
@@ -394,6 +409,7 @@ def create_app():
                         "LOCATION  " + location_name + '  ' + str(rounded_latitude) + '  ' + str(rounded_longitude) + '  ' + str(
                             country_code) + '  ' + str(state_code) + "\n\n")
                     try:
+                        DBstart_time = time.time_ns()
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                      database=os.environ.get('DATABASE')) as mydb:
@@ -406,6 +422,8 @@ def create_app():
                                 "SELECT * FROM locations WHERE ROUND(latitude,3) = %s and ROUND(longitude,3) = %s and location_name = %s",
                                 (str(rounded_latitude), str(rounded_longitude), location_name))
                             row = mycursor.fetchone()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not row:
                                 safe_print_error("There is no entry with that latitude and longitude\n")
                                 FAILURE.inc()
@@ -413,9 +431,12 @@ def create_app():
                                 return "Error, there is no locations to delete with that parameters", 400
                             else:
                                 location_id = row[0]
+                                DBstart_time = time.time_ns()
                                 mycursor.execute("DELETE FROM user_constraints WHERE user_id = %s and location_id = %s",
                                                  (str(id_user), str(location_id)))
                                 mydb.commit()
+                                DBend_time = time.time_ns()
+                                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                 ACTIVE_RULES.dec()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Row in user_constraints correctly deleted", 200
@@ -490,6 +511,7 @@ def create_app():
                     del data_dict['trigger_period']
                     str_json = json.dumps(data_dict)
                     try:
+                        DBstart_time = time.time_ns()
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                      database=os.environ.get('DATABASE')) as mydb:
@@ -502,37 +524,53 @@ def create_app():
                                 "SELECT * FROM locations WHERE ROUND(latitude,3) = %s and ROUND(longitude,3) = %s and location_name = %s",
                                 (str(rounded_latitude), str(rounded_longitude), location_name))
                             row = mycursor.fetchone()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not row:
                                 safe_print_error("There is no entry with that latitude and longitude\n")
+                                DBstart_time = time.time_ns()
                                 mycursor.execute(
                                     "INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s, %s)",
                                     (location_name, str(rounded_latitude), str(rounded_longitude), country_code,
                                      state_code))
                                 mydb.commit()
+                                DBend_time = time.time_ns()
+                                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                 location_id = mycursor.lastrowid
                                 safe_print("New location correctly inserted!\n")
                             else:
                                 location_id = row[0]  # location id = first element of first
-
+                            DBstart_time = time.time_ns()
                             mycursor.execute("SELECT * FROM user_constraints WHERE user_id = %s and location_id = %s",
                                              (str(id_user), str(location_id)))
                             result = mycursor.fetchone()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if result:
+                                DBstart_time = time.time_ns()
                                 mycursor.execute(
                                     "UPDATE user_constraints SET rules = %s WHERE user_id = %s and location_id = %s",
                                     (str_json, str(id_user), str(location_id)))
                                 mydb.commit()
+                                DBend_time = time.time_ns()
+                                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+                                DBstart_time = time.time_ns()
                                 mycursor.execute(
                                     "UPDATE user_constraints SET trigger_period = %s WHERE user_id = %s and location_id = %s",
                                     (str(trigger_period), str(id_user), str(location_id)))
                                 mydb.commit()
+                                DBend_time = time.time_ns()
+                                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Updated table user_constraints correctly!", 200
                             else:
+                                DBstart_time = time.time_ns()
                                 mycursor.execute(
                                     "INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, CURRENT_TIMESTAMP, %s)",
                                     (str(id_user), str(location_id), str_json, str(trigger_period)))
                                 mydb.commit()
+                                DBend_time = time.time_ns()
+                                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                 ACTIVE_RULES.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "New user_constraints correctly inserted!", 200
@@ -596,6 +634,7 @@ def create_app():
                         return 'JWT Token not provided: login required!', 401
 
                     try:
+                        DBstart_time = time.time_ns()
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                      database=os.environ.get('DATABASE')) as mydb:
@@ -606,6 +645,8 @@ def create_app():
                             # retrieve all the rules of the user
                             mycursor.execute("SELECT location_id, rules, trigger_period FROM user_constraints WHERE user_id = %s",(str(id_user),))
                             rows = mycursor.fetchall()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not rows:
                                 FAILURE.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -615,13 +656,13 @@ def create_app():
                                 for row in rows:
                                     location_id = row[0]
                                     rules = row[1]
-                                    rules_dict = json.loads(rules)
                                     trigger_period = row[2]
-
+                                    DBstart_time = time.time_ns()
                                     # query to DB in order to retrieve information about location by location_id
                                     mycursor.execute("SELECT location_name, country_code, state_code FROM locations WHERE id = %s", (str(location_id), ))
                                     location_row = mycursor.fetchone()
-
+                                    DBend_time = time.time_ns()
+                                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                     temp_list = list()
                                     location_dict = dict()
                                     location_dict["location"] = location_row
@@ -697,15 +738,22 @@ if __name__ == "__main__":
 
     # create tables location and user_constraints if not exists.
     try:
+        DBstart_time = time.time_ns()
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY AUTO_INCREMENT, location_name VARCHAR(100) NOT NULL, latitude FLOAT NOT NULL, longitude FLOAT NOT NULL, country_code VARCHAR(10) NOT NULL, state_code VARCHAR(70) NOT NULL, UNIQUE KEY location_tuple (location_name, latitude, longitude));")
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+            DBstart_time = time.time_ns()
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, FOREIGN KEY (location_id) REFERENCES locations(id), UNIQUE KEY user_location_id (user_id, location_id));")
             mydb.commit()  # to make changes effective
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:

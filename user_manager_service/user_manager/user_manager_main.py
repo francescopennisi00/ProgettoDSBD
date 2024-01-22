@@ -15,7 +15,7 @@ from flask import Flask
 from flask import request
 import hashlib
 import datetime
-from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge,Histogram
 from flask import Response
 
 
@@ -28,7 +28,7 @@ RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of respo
 LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')
 DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which user-manager response')
-
+QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
 lock = threading.Lock()
@@ -54,12 +54,15 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
             token_dict = jwt.decode(request.jwt_token, algorithms=['HS256'], options={"verify_signature": False})
             email = token_dict.get("email")
             try:
+                DBstart_time = time.time_ns()
                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                              user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                              database=os.environ.get('DATABASE')) as db:
                     cursor = db.cursor()
                     cursor.execute("SELECT id, password FROM users WHERE email= %s", (email,))
                     row = cursor.fetchone()
+                    DBend_time = time.time_ns()
+                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                     if row:
                         userid = row[0]
                         password = row[1]
@@ -88,12 +91,15 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
     # connection with DB and retrieve email
     def RequestEmail(self, request, context):
         try:
+            DBstart_time = time.time_ns()
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as db:
                 cursor = db.cursor()
                 cursor.execute("SELECT email FROM users WHERE id= %s", (str(request.user_id),))
                 row = cursor.fetchone()
+                DBend_time = time.time_ns()
+                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 if row:
                     email = row[0]
                 else:
@@ -162,6 +168,7 @@ def create_app():
                     password = data_dict.get("psw")
                     timestamp_client = data_dict.get("timestamp_client")
                     try:
+                        DBstart_time = time.time_ns()
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                      database=os.environ.get('DATABASE')) as mydb:
@@ -170,11 +177,16 @@ def create_app():
                             # check if email already exists in DB
                             mycursor.execute("SELECT email FROM users WHERE email=%s", (email,))
                             email_row = mycursor.fetchone()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not email_row:
                                 hash_psw = calculate_hash(password)  # we save hash in DB for major privacy for users
+                                DBstart_time = time.time_ns()
                                 mycursor.execute("INSERT INTO users (email, password) VALUES (%s,%s)",
                                                  (email, hash_psw))
                                 mydb.commit()
+                                DBend_time = time.time_ns()
+                                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                 REGISTERED_USERS_COUNT.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Registration made successfully! Now try to sign in!", 200
@@ -216,6 +228,7 @@ def create_app():
                     timestamp_client = data_dict.get("timestamp_client")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
                     try:
+                        DBstart_time = time.time_ns()
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                      database=os.environ.get('DATABASE')) as mydb:
@@ -225,6 +238,8 @@ def create_app():
                             mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s",
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not email_row:
                                 FAILURE.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -272,12 +287,15 @@ def create_app():
                             token_dict = jwt.decode(jwt_token, algorithms=['HS256'], options={"verify_signature": False})
                             email = token_dict.get("email")
                             try:
+                                DBstart_time = time.time_ns()
                                 with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                              user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                              database=os.environ.get('DATABASE')) as db:
                                     cursor = db.cursor()
                                     cursor.execute("SELECT password FROM users WHERE email= %s", (email,))
                                     row = cursor.fetchone()
+                                    DBend_time = time.time_ns()
+                                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                     if row:
                                         password = row[0]
                                     else:
@@ -333,6 +351,7 @@ def create_app():
                     timestamp_client = data_dict.get("timestamp_client")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
                     try:
+                        DBstart_time = time.time_ns()
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                      database=os.environ.get('DATABASE')) as mydb:
@@ -342,15 +361,20 @@ def create_app():
                             mycursor.execute("SELECT id, email, password FROM users WHERE email=%s and password=%s",
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not email_row:
                                 FAILURE.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return f"Email or password wrong! Retry!", 401
                             else:
                                 if delete_UserConstraints_By_UserID(email_row[0]) != -1:
+                                    DBstart_time = time.time_ns()
                                     mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
                                                      (email, hash_psw))
                                     mydb.commit()
+                                    DBend_time = time.time_ns()
+                                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                     REGISTERED_USERS_COUNT.dec()
                                     LOGGED_USERS_COUNT.dec()
                                     DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -409,6 +433,7 @@ if __name__ == '__main__':
 
     # Creating table users if not exits
     try:
+        DBstart_time = time.time_ns()
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
@@ -416,6 +441,8 @@ if __name__ == '__main__':
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(64) NOT NULL)")
             mydb.commit()  # to make changes effective
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:
