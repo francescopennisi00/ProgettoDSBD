@@ -9,7 +9,7 @@ import requests
 import socket
 import threading
 from flask import Flask
-from prometheus_client import Counter, generate_latest, REGISTRY, Gauge
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
 from flask import Response
 
 
@@ -17,6 +17,7 @@ from flask import Response
 ERROR_REQUEST_OPEN_WEATHER = Counter('WORKER_error_request_OpenWeather', 'Total number of requests sent to OpenWeather that failed')
 REQUEST_OPEN_WEATHER = Counter('WORKER_requests_to_OpenWeather', 'Total number of API call to OpenWeather')
 DELTA_TIME = Gauge('WORKER_response_time_OpenWeather', 'Difference between instant when worker sending request to OpenWeather and instant when it received the response')
+QUERY_DURATIONS_HISTOGRAM = Histogram('WORKER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
@@ -87,8 +88,11 @@ def make_query(query):
 # there is another key-value pair in the outer dictionary with key = "location" and value = array
 # that contains information about the location in common for all the entries to be entered into the DB
 def check_rules(db_cursor, api_response):
+    DBstart_time = time.time_ns()
     db_cursor.execute("SELECT rules FROM current_work WHERE worker_id = %s", (str(worker_id),))
     rules_list = db_cursor.fetchall()
+    DBend_time = time.time_ns()
+    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
     event_dict = dict()
     for rules in rules_list:
         user_violated_rules_list = list()
@@ -150,6 +154,7 @@ def format_data(data):
 # function for recovering unchecked rules when worker goes down before publishing notification event
 def find_current_work():
     try:
+        DBstart_time = time.time_ns()
         with (mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                       user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                       database=os.environ.get('DATABASE')) as db_conn):
@@ -163,6 +168,8 @@ def find_current_work():
             db_cursor = db_conn.cursor(buffered=True)
             db_cursor.execute("SELECT rules FROM current_work WHERE worker_id = %s", (str(worker_id),))
             result = db_cursor.fetchone()
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
             if result:
                 dict_row = json.loads(result[0])
                 # all entries in current_works are related to the same location
@@ -196,12 +203,15 @@ def delivery_callback(err, msg):
         safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
         try:
+            DBstart_time = time.time_ns()
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as mydb:
                 mycursor = mydb.cursor()
                 mycursor.execute("DELETE FROM current_work WHERE worker_id = %s", (str(worker_id),))
                 mydb.commit()  # to make changes effective
+                DBend_time = time.time_ns()
+                QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
         except mysql.connector.Error as err:
             safe_print_error("Exception raised!\n" + str(err))
             try:
@@ -278,6 +288,7 @@ if __name__ == "__main__":
     # the user is not interested but for which at least one other user is interested in.
     # In this second case, the actual value of the rule is "null"
     try:
+        DBstart_time = time.time_ns()
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                      database=os.environ.get('DATABASE')) as mydb:
@@ -287,6 +298,8 @@ if __name__ == "__main__":
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS current_work (id INTEGER PRIMARY KEY AUTO_INCREMENT, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, worker_id VARCHAR(60) NOT NULL, INDEX worker_ind (worker_id))")
             mydb.commit()  # to make changes effective
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
     except mysql.connector.Error as err:
         safe_print_error("Exception raised! -> " + str(err) + "\n")
         try:
@@ -389,6 +402,7 @@ if __name__ == "__main__":
                 loc = data.get('location')
                 safe_print("LOCATION: " + str(loc))
                 try:
+                    DBstart_time = time.time_ns()
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                  user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                  database=os.environ.get('DATABASE')) as mydb:
@@ -405,6 +419,8 @@ if __name__ == "__main__":
                             json_to_insert = json.dumps(temp_dict)
                             mycursor.execute("INSERT INTO current_work (worker_id, rules, time_stamp) VALUES (%s, %s, CURRENT_TIMESTAMP())", (worker_id, json_to_insert))
                         mydb.commit()  # to make changes effective after inserting rules for ALL the users
+                        DBend_time = time.time_ns()
+                        QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 except mysql.connector.Error as err:
                     safe_print_error("Exception raised! -> " + str(err) + "\n")
                     try:
