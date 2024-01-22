@@ -17,6 +17,8 @@ from flask import Response
 ERROR_REQUEST_OPEN_WEATHER = Counter('WORKER_error_request_OpenWeather', 'Total number of requests sent to OpenWeather that failed')
 REQUEST_OPEN_WEATHER = Counter('WORKER_requests_to_OpenWeather', 'Total number of API calls to OpenWeather')
 DELTA_TIME = Gauge('WORKER_response_time_OpenWeather', 'Difference between instant when worker sends request to OpenWeather and instant when it receives the response')
+KAFKA_MESSAGE = Counter('WORKER_kafka_message_number', 'Total number of kafka messages produced by worker-service')
+KAFKA_MESSAGE_DELIVERED = Counter('WORKER_kafka_message_delivered_number', 'Total number of kafka messages produced by worker-service that have been delivered correctly')
 QUERY_DURATIONS_HISTOGRAM = Histogram('WORKER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds', buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
 # buckets indicated because of measuring time in nanoseconds
 
@@ -201,6 +203,7 @@ def delivery_callback(err, msg):
         safe_print_error('%% Message failed delivery: %s\n' % err)
         raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
     else:
+        KAFKA_MESSAGE_DELIVERED.inc()
         safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
         try:
@@ -226,6 +229,7 @@ def produce_kafka_message(topic_name, kafka_producer, message):
     # Publish on the specific topic
     try:
         kafka_producer.produce(topic_name, value=message, callback=delivery_callback)
+        KAFKA_MESSAGE.inc()
     except BufferError:
         safe_print_error(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))

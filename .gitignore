@@ -6,3 +6,4 @@ notifier_service/venv
 user_manager_service/venv_um
 worker_service/venv_worker
 WMS_service/venv_WMS
+SLA_manager_service/venv_SLA
