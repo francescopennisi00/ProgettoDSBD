@@ -15,8 +15,8 @@ from flask import Response
 
 # definition of the metrics to be exposed
 ERROR_REQUEST_OPEN_WEATHER = Counter('WORKER_error_request_OpenWeather', 'Total number of requests sent to OpenWeather that failed')
-REQUEST_OPEN_WEATHER = Counter('WORKER_requests_to_OpenWeather', 'Total number of API call to OpenWeather')
-DELTA_TIME = Gauge('WORKER_response_time_OpenWeather', 'Difference between instant when worker sending request to OpenWeather and instant when it received the response')
+REQUEST_OPEN_WEATHER = Counter('WORKER_requests_to_OpenWeather', 'Total number of API calls to OpenWeather')
+DELTA_TIME = Gauge('WORKER_response_time_OpenWeather', 'Difference between instant when worker sends request to OpenWeather and instant when it receives the response')
 QUERY_DURATIONS_HISTOGRAM = Histogram('WORKER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 
@@ -402,7 +402,6 @@ if __name__ == "__main__":
                 loc = data.get('location')
                 safe_print("LOCATION: " + str(loc))
                 try:
-                    DBstart_time = time.time_ns()
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                  user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                                  database=os.environ.get('DATABASE')) as mydb:
@@ -417,10 +416,11 @@ if __name__ == "__main__":
                                     temp_dict[key] = data.get(key)[i]
                             temp_dict['location'] = loc
                             json_to_insert = json.dumps(temp_dict)
+                            DBstart_time = time.time_ns()
                             mycursor.execute("INSERT INTO current_work (worker_id, rules, time_stamp) VALUES (%s, %s, CURRENT_TIMESTAMP())", (worker_id, json_to_insert))
+                            DBend_time = time.time_ns()
+                            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                         mydb.commit()  # to make changes effective after inserting rules for ALL the users
-                        DBend_time = time.time_ns()
-                        QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 except mysql.connector.Error as err:
                     safe_print_error("Exception raised! -> " + str(err) + "\n")
                     try:

@@ -70,10 +70,6 @@ data:
           - record: WMS_DB_90_quantile_query_durations_nanoseconds
             expr: histogram_quantile(0.9, WMS_query_durations_nanoseconds_DB)
 
-
-
-
-
   prometheus.yml: |-
     global:
       evaluation_interval: 30s

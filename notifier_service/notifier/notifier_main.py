@@ -19,7 +19,7 @@ from flask import Response
 
 # definition of the metrics to be exposed
 NOTIFICATIONS = Counter('NOTIFIER_notifications_sent', 'Total number of notifications sent')
-NOTIFICATIONS_ERROR = Counter('NOTIFIER_notifications_error', 'Total number of error in sending email')
+NOTIFICATIONS_ERROR = Counter('NOTIFIER_notifications_error', 'Total number of errors in sending email')
 DELTA_TIME = Gauge('NOTIFIER_notification_latency_nanoseconds', 'Latency beetween instant in which worker publishes the message and instant in which notifier sends email')
 QUERY_DURATIONS_HISTOGRAM = Histogram('NOTIFIER_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 

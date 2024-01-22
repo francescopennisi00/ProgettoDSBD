@@ -20,12 +20,12 @@ from flask import Response
 # definition of the metrics to be exposed
 REQUEST = Counter('WMS_requests', 'Total number of requests received by wms-service')
 FAILURE = Counter('WMS_failure_requests', 'Total number of requests received by wms-service that failed')
-INTERNAL_ERROR = Counter('WMS_internal_http_error', 'Total number of internal http error in wms-service')
+INTERNAL_ERROR = Counter('WMS_internal_http_error', 'Total number of internal http errors in wms-service')
 ACTIVE_RULES = Gauge('WMS_active_rules', 'Total number of rules that have been provided to the system')
-KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka message produced by wms-service')
+KAFKA_MESSAGE = Counter('WMS_kafka_message_number', 'Total number of kafka messages produced by wms-service')
 KAFKA_MESSAGE_DELIVERED = Counter('WMS_kafka_message_delivered_number', 'Total number of kafka messages produced by wms-service that have been delivered correctly')
 REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to um-service')
-DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which wms-manager response')
+DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which wms-manager responses')
 QUERY_DURATIONS_HISTOGRAM = Histogram('WMS_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource

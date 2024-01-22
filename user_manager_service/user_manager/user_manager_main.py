@@ -22,12 +22,12 @@ from flask import Response
 # definition of the metrics to be exposed
 REQUEST = Counter('UM_requests', 'Total number of requests received by um-service')
 FAILURE = Counter('UM_failure_requests', 'Total number of requests received by um-service that failed')
-INTERNAL_ERROR = Counter('UM_internal_http_error', 'Total number of internal http error in um-service')
-RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_WMS', 'Total number of response sent to wms-service')
-RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of response sent to notifier-service')
+INTERNAL_ERROR = Counter('UM_internal_http_error', 'Total number of internal http errors in um-service')
+RESPONSE_TO_WMS = Counter('UM_RESPONSE_TO_WMS', 'Total number of responses sent to wms-service')
+RESPONSE_TO_NOTIFIER = Counter('UM_RESPONSE_TO_NOTIFIER', 'Total number of responses sent to notifier-service')
 LOGGED_USERS_COUNT = Gauge('UM_logged_users_count', 'Total number of logged users')
 REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of registered users')
-DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client send the API CALL and instant in which user-manager response')
+DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which user-manager responses')
 QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds')
 
 # create lock objects for mutual exclusion in acquire stdout and stderr resource
