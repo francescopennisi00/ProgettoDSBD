@@ -19,3 +19,7 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets: ['notifier-service:50055']
+  - job_name: cadvisor
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['cadvisor:8080']
