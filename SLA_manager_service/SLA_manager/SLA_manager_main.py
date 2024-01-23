@@ -12,8 +12,9 @@ from prometheus_api_client import PrometheusConnect, MetricsList, MetricSnapshot
 from datetime import timedelta
 from prometheus_api_client.utils import parse_datetime
 import logging
-
-
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing
+import matplotlib.pyplot as plt
+from io import BytesIO
 def calculate_hash(input_string):
     sha256_hash = hashlib.sha256()
     sha256_hash.update(input_string.encode('utf-8'))
@@ -104,7 +105,7 @@ def violation_counter(list_of_metrics, hours):
         min_target_value = metric[2]
         max_target_value = metric[3]
 
-        start_time = parse_datetime(str(hours)+"h")
+        start_time = parse_datetime(str(hours) + "h")
         end_time = parse_datetime("now")
 
         metric_data = prom.get_metric_range_data(
@@ -127,6 +128,62 @@ def violation_counter(list_of_metrics, hours):
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
         status_string_to_be_returned = status_string_to_be_returned + metric_string
     return status_string_to_be_returned
+
+
+def metrics_forecasting(metric, minutes):
+    URL = "http://prometheus-service:9090/"
+    prom = PrometheusConnect(url=URL, disable_ssl=True)
+
+    metric_name = metric[1]
+    min_target_value = metric[2]
+    max_target_value = metric[3]
+    violation_count = 0
+    start_time = parse_datetime("6h")
+    end_time = parse_datetime("now")
+    status_string_to_be_returned = ""
+    metric_string = ""
+    metric_data = prom.get_metric_range_data(
+        metric_name=metric_name,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    metric_df = MetricRangeDataFrame(metric_data)
+    value_list = metric_df['value']
+    logger.info("VALUE_LIST\n " + str(value_list.index))
+    tsr = value_list.resample(rule='5T').mean()
+    logger.info("TSR\n " + str(tsr))
+    # Split training and test data (80/20% 0r 90/10)
+    len_dataframe = len(metric_df)
+    end = 0.8 * len_dataframe
+    end_index = round(end)
+    train_data = tsr.iloc[:end_index]
+    test_data = tsr.iloc[end_index:]
+    logger.info("TEST DATA\n " + str(test_data))
+    tsmodel = SimpleExpSmoothing(train_data).fit()
+    # forecast (check 320)
+    try:
+        minutes_int = int(minutes)  # required because minutes GET parameter is a string
+    except ValueError:
+        return "parameter_error"
+    steps = minutes_int*2  # each step takes 30 seconds, 2 step each minute
+    prediction = tsmodel.forecast(steps)
+    logger.info("PREDICTION\n " + str(prediction))
+    logger.info("\nTYPE PREDICTION\n " + str(type(prediction)))
+    try:
+        for element in prediction:
+            logger.info("\nELEMENT OF PREDICTION " + str(element))
+            actual_value = float(element)
+            print(f"Metric {metric_name} -> actual value: {actual_value}\n")
+            if actual_value < min_target_value or actual_value > max_target_value:
+                violation_count = violation_count + 1
+        if violation_count > 0:
+            metric_string = f"Metric name: {metric_name} Violations number:{violation_count} <br>"
+    except ValueError:
+        print("Metric actual value is not a decimal number!")
+        return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
+    status_string_to_be_returned = status_string_to_be_returned + metric_string
+    return train_data, test_data, prediction
+
 
 
 def create_app():
@@ -379,6 +436,66 @@ def create_app():
                 print(f"Exception raised in rollback: {exe}\n")
             return f"Error in connecting to database: {str(err)}", 500
 
+    @app.route('/SLA_forecasting_violations')
+    def forecasting_handler():
+        minutes = request.args.get('minutes')
+        metric_name = request.args.get('metric_name')
+        authorization_header = request.headers.get('Authorization')
+        if authorization_header and authorization_header.startswith('Bearer '):
+            result_code = authenticate(authorization_header)
+            if result_code == -1:
+                return 'JWT Token expired: login required!', 401
+            elif result_code == -2:
+                return 'Error in communication with DB in order to authentication: retry!', 500
+            elif result_code == -3:
+                return 'JWT Token is not valid: login required!', 401
+        else:
+            # No token provided in authorization header
+            return 'JWT Token not provided: login required!', 401
+
+        try:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                         user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                         database=os.environ.get('DATABASE')) as mydb:
+
+                mycursor = mydb.cursor()
+
+                # retrieve all the metrics
+                mycursor.execute("SELECT * FROM metrics WHERE metric_name = %s", (metric_name,))
+                row = mycursor.fetchone()
+                if not row:
+                    return f"There is no {metric_name} metrics!", 200
+                else:
+                    result = metrics_forecasting(row, minutes)
+                    if result == "parameter_error":
+                        return f"Parameter error: minutes must be an integer ", 400
+                    else:
+                        train_data = result[0]
+                        test_data = result[1]
+                        prediction = result[2]
+                        plt.figure(figsize=(24, 10))
+                        plt.ylabel('Values', fontsize=14)
+                        plt.xlabel('Time', fontsize=14)
+                        plt.title('Values over time', fontsize=16)
+                        plt.plot(train_data, "-", label='train')
+                        plt.plot(test_data, "-", label='real')
+                        plt.plot(prediction, "--", label='pred')
+                        plt.legend(title='Series')
+                        buffer = BytesIO()
+                        plt.savefig(buffer, format='png')
+                        buffer.seek(0)
+                        plt.close()
+                        return app.response_class(buffer.getvalue(), mimetype='image/png'),200
+
+
+        except mysql.connector.Error as err:
+            print("Exception raised! -> " + str(err) + "\n")
+            try:
+                mydb.rollback()
+            except Exception as exe:
+                print(f"Exception raised in rollback: {exe}\n")
+            return f"Error in connecting to database: {str(err)}", 500
+
     return app
 
 
@@ -392,6 +509,14 @@ if __name__ == '__main__':
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
+    secret_password_path = os.environ.get('EMAIL')
+    with open(secret_password_path, 'r') as file:
+        secret_password_value = file.read()
+    os.environ['EMAIL'] = secret_password_value
+    secret_password_path = os.environ.get('ADMIN_PASSWORD')
+    with open(secret_password_path, 'r') as file:
+        secret_password_value = file.read()
+    os.environ['ADMIN_PASSWORD'] = secret_password_value
 
     print("ENV variables initialization done")
 
@@ -406,6 +531,12 @@ if __name__ == '__main__':
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(64) NOT NULL)")
             mydb.commit()  # to make changes effective
+            mycursor.execute("SELECT * FROM admins")
+            result = mycursor.fetchall()
+            if not result:
+                psw = calculate_hash(os.environ.get("ADMIN_PASSWORD"))
+                mycursor.execute("INSERT INTO admins(email, password) VALUES(%s,%s)",(os.environ.get("EMAIL"), psw))
+                mydb.commit()
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:

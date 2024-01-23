@@ -290,12 +290,16 @@ services:
       - SLA_mysqlDB
     secrets:
       - SLA_DB_root_psw
+      - email
+      - admin_password
     environment:
       HOSTNAME: "SLA_mysqlDB"
       PORT: 3306
       USER: "root"
       PASSWORD: /run/secrets/SLA_DB_root_psw
       DATABASE: "sla"
+      EMAIL: /run/secrets/email
+      ADMIN_PASSWORD: /run/secrets/admin_password
     networks:
       - weather_network
     restart: always
@@ -334,3 +338,5 @@ secrets:
     file: apikey.txt
   SLA_DB_root_psw:
     file: SLA_DB_root_psw.txt
+  admin_password:
+    file: admin_psw.txt
