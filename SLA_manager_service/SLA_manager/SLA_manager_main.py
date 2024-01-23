@@ -31,7 +31,7 @@ def authenticate(auth_header):
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as db:
                 cursor = db.cursor()
-                cursor.execute("SELECT id, password FROM users WHERE email= %s", (email,))
+                cursor.execute("SELECT id, password FROM admins WHERE email= %s", (email,))
                 row = cursor.fetchone()
                 if row:
                     password = row[1]
@@ -153,7 +153,7 @@ def create_app():
                             mycursor = mydb.cursor()
 
                             # check if email already exists in DB
-                            mycursor.execute("SELECT email, password FROM users WHERE email=%s and password=%s",
+                            mycursor.execute("SELECT email, password FROM admins WHERE email=%s and password=%s",
                                              (email, hash_psw))
                             email_row = mycursor.fetchone()
                             if not email_row:
@@ -219,7 +219,7 @@ def create_app():
                                         (metric, min, max))
                                     print("Inserting new metric!\n")
                                 else:
-                                    mycursor.execute("UPDATE metrics SET min_target_value = %s AND max_target_value = %s WHERE metric_name = %s",
+                                    mycursor.execute("UPDATE metrics SET min_target_value = %s, max_target_value = %s WHERE metric_name = %s",
                                                      (min, max, metric))
                                     print("Updating metric table!\n")
                             mydb.commit()
@@ -279,7 +279,7 @@ def create_app():
             return f"Error in connecting to database: {str(err)}", 500
 
     @app.route('/SLA_metrics_violations')
-    def status_handler():
+    def metrics_violations_handler():
         authorization_header = request.headers.get('Authorization')
         if authorization_header and authorization_header.startswith('Bearer '):
             result_code = authenticate(authorization_header)
@@ -338,7 +338,7 @@ if __name__ == '__main__':
 
     print("ENV variables initialization done")
 
-    # Creating table users if not exits
+    # Creating table admins if not exits
     try:
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                      user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),

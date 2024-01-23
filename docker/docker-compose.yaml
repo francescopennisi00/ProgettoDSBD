@@ -262,6 +262,44 @@ services:
       - weather_network
     restart: always
 
+  SLA_mysqlDB:
+    image: mysql:latest
+    container_name: SLA_mysqlDB
+    secrets:
+      - SLA_DB_root_psw
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/SLA_DB_root_psw
+      MYSQL_DATABASE: sla
+    volumes:
+      - SLA_volume:/var/lib/mysql
+    expose:
+      - "3306"
+    networks:
+      - weather_network
+    restart: always
+
+  SLA_service:
+    container_name: sla-service
+    build:
+      context: ../SLA_manager_service
+      dockerfile: Dockerfile
+    image: sla_manager_service_image:base
+    ports:
+      - "50000:50055"
+    depends_on:
+      - SLA_mysqlDB
+    secrets:
+      - SLA_DB_root_psw
+    environment:
+      HOSTNAME: "SLA_mysqlDB"
+      PORT: 3306
+      USER: "root"
+      PASSWORD: /run/secrets/SLA_DB_root_psw
+      DATABASE: "sla"
+    networks:
+      - weather_network
+    restart: always
+
 volumes:
   notifier_volume:
   um_volume:
@@ -274,6 +312,7 @@ volumes:
   kafka_data_volume:
   nginx_volume:
   prometheus_data:
+  SLA_volume:
 
 networks:
   weather_network:
@@ -293,3 +332,5 @@ secrets:
     file: email.txt
   apikey:
     file: apikey.txt
+  SLA_DB_root_psw:
+    file: SLA_DB_root_psw.txt
