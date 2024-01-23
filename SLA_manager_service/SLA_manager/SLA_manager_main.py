@@ -1,4 +1,3 @@
-import time
 import mysql.connector
 import os
 import sys
@@ -8,8 +7,7 @@ from flask import Flask
 from flask import request
 import hashlib
 import datetime
-from prometheus_client import Counter, generate_latest, REGISTRY, Gauge,Histogram
-from flask import Response
+from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
 
 
 def calculate_hash(input_string):
@@ -21,8 +19,9 @@ def calculate_hash(input_string):
 
 def authenticate(auth_header):
     try:
-        # extract token information without verifying them: needed in order to retrieve admin email
-        token_dict = jwt.decode(request.jwt_token, algorithms=['HS256'], options={"verify_signature": False})
+        jwt_token = auth_header.split(' ')[1]  # Extract token from <Bearer token> string
+
+        token_dict = jwt.decode(jwt_token, algorithms=['HS256'], options={"verify_signature": False})
         email = token_dict.get("email")
         try:
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -32,7 +31,6 @@ def authenticate(auth_header):
                 cursor.execute("SELECT id, password FROM users WHERE email= %s", (email,))
                 row = cursor.fetchone()
                 if row:
-                    adminid = row[0]
                     password = row[1]
                 else:
                     return -3  # token is not valid: email not present
@@ -40,7 +38,7 @@ def authenticate(auth_header):
             print("Exception raised! -> {0}".format(str(error)))
             return -2
         # verify that password is correct verifying digital signature with secret = password
-        jwt.decode(request.jwt_token, password, algorithms=['HS256'])
+        jwt.decode(jwt_token, password, algorithms=['HS256'])
         return 1
     except jwt.ExpiredSignatureError:
         return -1  # token is expired
