@@ -54,7 +54,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def verify_metrics_current_violation_status(metrics_list):  # argument is a list of (id, name, min_value, max_value) list
+def verify_metrics_current_violation_status(
+        metrics_list):  # argument is a list of (id, name, min_value, max_value) list
 
     URL = "http://prometheus-service:9090/"
     prom = PrometheusConnect(url=URL, disable_ssl=True)
@@ -86,54 +87,46 @@ def verify_metrics_current_violation_status(metrics_list):  # argument is a list
         except ValueError:
             print("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
-    status_string_to_be_returned = status_string_to_be_returned + f"Number of violation: {str(violation_count)} "+ "<br><br>"
+    status_string_to_be_returned = status_string_to_be_returned + f"Number of violation: {str(violation_count)} " + "<br><br>"
     return status_string_to_be_returned
 
 
 def violation_counter(list_of_metrics, hours):
     URL = "http://prometheus-service:9090/"
     prom = PrometheusConnect(url=URL, disable_ssl=True)
-    label_config = {'server': 'localhost'}
 
-    violation_count = 0
-
-    status_string_to_be_returned = ""
+    status_string_to_be_returned = f"VIOLATIONS IN THE LAST {hours} HOURS <br><br>"
 
     for metric in list_of_metrics:
+        metric_string = ""
+        violation_count = 0
         metric_name = metric[1]
         min_target_value = metric[2]
         max_target_value = metric[3]
 
-        start_time = parse_datetime("1h")
+        start_time = parse_datetime(str(hours)+"h")
         end_time = parse_datetime("now")
 
         metric_data = prom.get_metric_range_data(
-            metric_name='rt_random',
-            label_config=label_config,
+            metric_name=metric_name,
             start_time=start_time,
             end_time=end_time,
         )
-        logger.info(str(metric_data))
-        actual_string_value = metric_data[0].get("value")[1]
-        return "TO BE CONTINUED"
-
-        """"
+        logger.info("METRIC " + str(metric_data))
         try:
-            actual_value = float(actual_string_value)
-            print(f"Metric {metric_name} -> actual value: {actual_value}\n")
-            if actual_value < min_target_value or actual_value > max_target_value:
-                metric_string = f"Metric name: {metric_name} \n| Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: VIOLATED!\n\n"
-                violation_count = violation_count + 1
-                status_string_to_be_returned = status_string_to_be_returned + metric_string
-            else:
-                metric_string = f"Metric name: {metric_name} \n| Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: NOT VIOLATED!\n\n"
-                status_string_to_be_returned = status_string_to_be_returned + metric_string
+            for element in metric_data[0].get('values'):
+                actual_string_value = element[1]
+                actual_value = float(actual_string_value)
+                print(f"Metric {metric_name} -> actual value: {actual_value}\n")
+                if actual_value < min_target_value or actual_value > max_target_value:
+                    violation_count = violation_count + 1
+            if violation_count > 0:
+                metric_string = f"Metric name: {metric_name} Violations number:{violation_count} <br>"
         except ValueError:
             print("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
-    status_string_to_be_returned = status_string_to_be_returned + f"Number of violation: {str(violation_count)}\n\n"
+        status_string_to_be_returned = status_string_to_be_returned + metric_string
     return status_string_to_be_returned
-    """
 
 
 def create_app():
@@ -274,16 +267,24 @@ def create_app():
 
                             # buffered = True is required because we reuse db cursor after a fetchone()
                             mycursor = mydb.cursor(buffered=True)
-
+                            string_to_be_returned = ""
+                            found = 0
                             for metric in metrics_names_list:
                                 mycursor.execute("SELECT * FROM metrics WHERE metric_name = %s", (metric,))
                                 metric_row = mycursor.fetchone()
                                 if metric_row:
                                     mycursor.execute("DELETE FROM metrics WHERE metric_name = %s", (metric,))
+                                    found = 1
                                 else:
-                                    print(f"The metric {metric} is not present in the database! Therefore, it cannot be deleted!")
+                                    string_to_be_returned = string_to_be_returned + f"The metric {metric} is not present in the database! Therefore, it cannot be deleted!<br>"
                             mydb.commit()
-                            return "Metrics deleted correctly!", 200
+                            if string_to_be_returned == "":
+                                string_to_be_returned = "Metrics deleted correctly!"
+                            else:
+                                if found == 1:
+                                    string_to_be_returned = string_to_be_returned + "Other metrics deleted correctly!"
+
+                            return string_to_be_returned, 200
 
                     except mysql.connector.Error as err:
                         print("Exception raised! -> " + str(err) + "\n")
@@ -297,7 +298,6 @@ def create_app():
                 return f"Error in reading data: {str(e)}", 400
         else:
             return "Error: the request must be in JSON format", 400
-
 
     @app.route('/SLA_metrics_status')
     def status_handler():
@@ -369,7 +369,7 @@ def create_app():
                     result_1hour = violation_counter(rows, 1)
                     result_3hour = violation_counter(rows, 3)
                     result_6hour = violation_counter(rows, 6)
-                    return f"METRICS VIOLATED: \n\n{result_1hour}\n\n{result_3hour}\n\n{result_6hour}", 200
+                    return f"METRICS VIOLATED: <br><br> {result_1hour} <br><br> {result_3hour} <br><br> {result_6hour}", 200
 
         except mysql.connector.Error as err:
             print("Exception raised! -> " + str(err) + "\n")
