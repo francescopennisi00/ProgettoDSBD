@@ -11,6 +11,7 @@ from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogr
 from prometheus_api_client import PrometheusConnect, MetricsList, MetricSnapshotDataFrame, MetricRangeDataFrame
 from datetime import timedelta
 from prometheus_api_client.utils import parse_datetime
+import logging
 
 
 def calculate_hash(input_string):
@@ -49,50 +50,54 @@ def authenticate(auth_header):
         return -3  # token is not valid: password incorrect
 
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 def verify_metrics_current_violation_status(metrics_list):  # argument is a list of (id, name, min_value, max_value) list
 
     URL = "http://prometheus-service:9090/"
     prom = PrometheusConnect(url=URL, disable_ssl=True)
-    label_config = {'server': 'localhost'}
 
     violation_count = 0
 
-    status_string_to_be_returned=""
-
+    status_string_to_be_returned = ""
+    logger.info("Metric list" + str(metrics_list))
     for metric in metrics_list:
+        logger.info("metric" + str(metric))
         metric_name = metric[1]
+        logger.info("metric name" + metric_name)
         min_target_value = metric[2]
         max_target_value = metric[3]
 
-        queryResult = prom.get_current_metric_value(metric_name=metric, label_config=label_config)
-        print(queryResult)
+        queryResult = prom.get_current_metric_value(metric_name=metric_name)
+        logger.info(str(queryResult))
         actual_string_value = queryResult[0].get("value")[1]
         try:
             actual_value = float(actual_string_value)
             print(f"Metric {metric_name} -> actual value: {actual_value}\n")
             if actual_value < min_target_value or actual_value > max_target_value:
-                metric_string = f"Metric name: {metric_name} \n| Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: VIOLATED!\n\n"
+                metric_string = f"Metric name: {metric_name}" + "<br>" + f"Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: VIOLATED!" + "<br><br>"
                 violation_count = violation_count + 1
                 status_string_to_be_returned = status_string_to_be_returned + metric_string
             else:
-                metric_string = f"Metric name: {metric_name} \n| Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: NOT VIOLATED!\n\n"
+                metric_string = f"Metric name: {metric_name}" + "<br>" + f"Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: NOT VIOLATED!" + "<br><br>"
                 status_string_to_be_returned = status_string_to_be_returned + metric_string
         except ValueError:
             print("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
-    status_string_to_be_returned = status_string_to_be_returned + f"Number of violation: {str(violation_count)}\n\n"
+    status_string_to_be_returned = status_string_to_be_returned + f"Number of violation: {str(violation_count)} "+ "<br><br>"
     return status_string_to_be_returned
 
 
 def violation_counter(list_of_metrics, hours):
-
     URL = "http://prometheus-service:9090/"
     prom = PrometheusConnect(url=URL, disable_ssl=True)
     label_config = {'server': 'localhost'}
 
     violation_count = 0
 
-    status_string_to_be_returned=""
+    status_string_to_be_returned = ""
 
     for metric in list_of_metrics:
         metric_name = metric[1]
@@ -108,7 +113,7 @@ def violation_counter(list_of_metrics, hours):
             start_time=start_time,
             end_time=end_time,
         )
-        print(metric_data)
+        logger.info(str(metric_data))
         actual_string_value = metric_data[0].get("value")[1]
         return "TO BE CONTINUED"
 
@@ -219,8 +224,9 @@ def create_app():
                                         (metric, min, max))
                                     print("Inserting new metric!\n")
                                 else:
-                                    mycursor.execute("UPDATE metrics SET min_target_value = %s, max_target_value = %s WHERE metric_name = %s",
-                                                     (min, max, metric))
+                                    mycursor.execute(
+                                        "UPDATE metrics SET min_target_value = %s, max_target_value = %s WHERE metric_name = %s",
+                                        (min, max, metric))
                                     print("Updating metric table!\n")
                             mydb.commit()
                             return "Metric table updated correctly!", 200
@@ -292,6 +298,7 @@ def create_app():
         else:
             return "Error: the request must be in JSON format", 400
 
+
     @app.route('/SLA_metrics_status')
     def status_handler():
         authorization_header = request.headers.get('Authorization')
@@ -321,7 +328,7 @@ def create_app():
                     return "There is no metrics that have been indicated!", 200
                 else:
                     result = verify_metrics_current_violation_status(rows)
-                    return f"STATUS OF METRICS: \n\n {result}", 200
+                    return f"STATUS OF METRICS: <br><br> {result}", 200
 
         except mysql.connector.Error as err:
             print("Exception raised! -> " + str(err) + "\n")
@@ -372,13 +379,11 @@ def create_app():
                 print(f"Exception raised in rollback: {exe}\n")
             return f"Error in connecting to database: {str(err)}", 500
 
-
     return app
 
 
 # create Flask application
 app = create_app()
-
 
 if __name__ == '__main__':
 

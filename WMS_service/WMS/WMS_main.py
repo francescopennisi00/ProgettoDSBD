@@ -348,7 +348,7 @@ def format_rules_response(list_of_rules):
             del temp_rules_dictionary[key]
         rules_string = json.dumps(temp_rules_dictionary)
         trigger_period_string = json.dumps(rule[2])
-        temp_string = f"LOCATION {str(counter)}\n" + location_string + "\n" + rules_string + "\n" + trigger_period_string + "\n\n"
+        temp_string = f"LOCATION {str(counter)}<br>" + location_string + "<br>" + rules_string + "<br>" + trigger_period_string + "<br><br>"
         location_rules = location_rules + temp_string
         counter = counter + 1
     if location_rules != "":
@@ -678,7 +678,7 @@ def create_app():
 
                                 rules_returned = format_rules_response(rules_list)
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
-                                return f"YOUR RULES: \n\n {rules_returned}", 200
+                                return f"YOUR RULES: <br><br> {rules_returned}", 200
 
                     except mysql.connector.Error as err:
                         safe_print_error("Exception raised! -> " + str(err) + "\n")
