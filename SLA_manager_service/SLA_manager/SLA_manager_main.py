@@ -238,6 +238,60 @@ def create_app():
         else:
             return "Error: the request must be in JSON format", 400
 
+    @app.route('/SLA_delete_metrics', methods=['POST'])
+    def delete_metrics_handler():
+        # Verify if data received is a JSON (it should be like {"metrics": [metric_name1, metric_name2, ... ]})
+        if request.is_json:
+            try:
+                # Extract json data
+                data_dict = request.get_json()
+                print("Data received:" + str(data_dict))
+                if data_dict:
+                    authorization_header = request.headers.get('Authorization')
+                    if authorization_header and authorization_header.startswith('Bearer '):
+                        result_code = authenticate(authorization_header)
+                        if result_code == -1:
+                            return 'JWT Token expired: login required!', 401
+                        elif result_code == -2:
+                            return 'Error in communication with DB in order to authentication: retry!', 500
+                        elif result_code == -3:
+                            return 'JWT Token is not valid: login required!', 401
+                    else:
+                        # No token provided in authorization header
+                        return 'JWT Token not provided: login required!', 401
+
+                    metrics_names_list = data_dict.get("metrics")
+                    try:
+                        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                                     database=os.environ.get('DATABASE')) as mydb:
+
+                            # buffered = True is required because we reuse db cursor after a fetchone()
+                            mycursor = mydb.cursor(buffered=True)
+
+                            for metric in metrics_names_list:
+                                mycursor.execute("SELECT * FROM metrics WHERE metric_name = %s", (metric,))
+                                metric_row = mycursor.fetchone()
+                                if metric_row:
+                                    mycursor.execute("DELETE FROM metrics WHERE metric_name = %s", (metric,))
+                                else:
+                                    print(f"The metric {metric} is not present in the database! Therefore, it cannot be deleted!")
+                            mydb.commit()
+                            return "Metrics deleted correctly!", 200
+
+                    except mysql.connector.Error as err:
+                        print("Exception raised! -> " + str(err) + "\n")
+                        try:
+                            mydb.rollback()
+                        except Exception as exe:
+                            print(f"Exception raised in rollback: {exe}\n")
+                        return f"Error in connecting to database: {str(err)}", 500
+
+            except Exception as e:
+                return f"Error in reading data: {str(e)}", 400
+        else:
+            return "Error: the request must be in JSON format", 400
+
     @app.route('/SLA_metrics_status')
     def status_handler():
         authorization_header = request.headers.get('Authorization')
@@ -258,8 +312,7 @@ def create_app():
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as mydb:
 
-                # buffered=True needed because we reuse after a fetchone
-                mycursor = mydb.cursor(buffered=True)
+                mycursor = mydb.cursor()
 
                 # retrieve all the metrics
                 mycursor.execute("SELECT * FROM metrics")
@@ -298,8 +351,7 @@ def create_app():
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as mydb:
 
-                # buffered=True needed because we reuse after a fetchone
-                mycursor = mydb.cursor(buffered=True)
+                mycursor = mydb.cursor()
 
                 # retrieve all the metrics
                 mycursor.execute("SELECT * FROM metrics")
