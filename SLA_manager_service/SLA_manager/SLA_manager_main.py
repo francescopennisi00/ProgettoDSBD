@@ -12,7 +12,7 @@ from prometheus_api_client import PrometheusConnect, MetricsList, MetricSnapshot
 from datetime import timedelta
 from prometheus_api_client.utils import parse_datetime
 import logging
-from statsmodels.tsa.holtwinters import SimpleExpSmoothing,ExponentialSmoothing
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing, ExponentialSmoothing
 import matplotlib.pyplot as plt
 from io import BytesIO
 import warnings
@@ -141,8 +141,9 @@ def metrics_forecasting(metric, minutes):
     metric_name = metric[1]
     min_target_value = metric[2]
     max_target_value = metric[3]
+    seasonality_period = metric[4]
     violation_count = 0
-    start_time = parse_datetime("3h")
+    start_time = parse_datetime("1h")  # it should be raised with the system active for longer
     end_time = parse_datetime("now")
     status_string_to_be_returned = ""
     metric_string = ""
@@ -163,7 +164,7 @@ def metrics_forecasting(metric, minutes):
     logger.info("TSR INTERPOLATE NUMBER OF NON VALUE " + str(tsr.isna().sum()))
     logger.info("TSR\n " + str(tsr))
     logger.info("TSR_INDEX\n " + str(tsr.index))
-    # Split training and test data (80/20% 0r 90/10)
+    # Split training and test data (80/20%)
     len_dataframe = len(metric_df)
     end = 0.8 * len_dataframe
     end_index = round(end)
@@ -172,8 +173,7 @@ def metrics_forecasting(metric, minutes):
     test_data = tsr.iloc[end_index:]
     logger.info("TEST DATA NUMBER OF NON VALUE " + str(test_data.isna().sum()))
     logger.info("TEST DATA\n " + str(test_data))
-    tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add", seasonal_periods=15).fit()
-    # forecast (check 320)
+    tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add", seasonal_periods=seasonality_period).fit()
     try:
         minutes_int = int(minutes)  # required because minutes GET parameter is a string
     except ValueError:
@@ -182,6 +182,7 @@ def metrics_forecasting(metric, minutes):
     prediction = tsmodel.forecast(steps)
     logger.info("PREDICTION\n " + str(prediction))
     logger.info("\nTYPE PREDICTION\n " + str(type(prediction)))
+    # TODO: replace next steps with estimation of probability of violation
     try:
         for element in prediction:
             logger.info("\nELEMENT OF PREDICTION " + str(element))
@@ -196,7 +197,6 @@ def metrics_forecasting(metric, minutes):
         return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
     status_string_to_be_returned = status_string_to_be_returned + metric_string
     return train_data, test_data, prediction
-
 
 
 def create_app():
@@ -265,7 +265,8 @@ def create_app():
                         # No token provided in authorization header
                         return 'JWT Token not provided: login required!', 401
 
-                    # admin provides a json containing as key the metric name and as value the max-min target values
+                    # admin provides a json containing key-value pairs that have as key the name of metric and as value
+                    # the list of [min_target_value, max_target_value, seasonality_period]
                     metric_name_set = data_dict.keys()
                     try:
                         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -278,18 +279,20 @@ def create_app():
                             for metric in metric_name_set:
                                 min = data_dict.get(metric)[0]
                                 max = data_dict.get(metric)[1]
+                                seasonality_period = data_dict.get(metric)[2]
+
                                 mycursor.execute("SELECT * FROM metrics WHERE metric_name = %s", (metric,))
                                 row = mycursor.fetchone()
                                 if not row:
                                     print("There is no metric with that name\n")
                                     mycursor.execute(
-                                        "INSERT INTO metrics (metric_name, min_target_value, max_target_value) VALUES (%s, %s, %s)",
-                                        (metric, min, max))
+                                        "INSERT INTO metrics (metric_name, min_target_value, max_target_value, seasonality_period) VALUES (%s, %s, %s, %s)",
+                                        (metric, min, max, seasonality_period))
                                     print("Inserting new metric!\n")
                                 else:
                                     mycursor.execute(
-                                        "UPDATE metrics SET min_target_value = %s, max_target_value = %s WHERE metric_name = %s",
-                                        (min, max, metric))
+                                        "UPDATE metrics SET min_target_value = %s, max_target_value = %s, seasonality_period=%s WHERE metric_name = %s",
+                                        (min, max, metric, seasonality_period))
                                     print("Updating metric table!\n")
                             mydb.commit()
                             return "Metric table updated correctly!", 200
@@ -483,6 +486,7 @@ def create_app():
                     if result == "parameter_error":
                         return f"Parameter error: minutes must be an integer ", 400
                     else:
+                        # TODO: replace next code with return string that indicates probability of violation (= result)
                         train_data = result[0]
                         test_data = result[1]
                         prediction = result[2]
@@ -499,7 +503,6 @@ def create_app():
                         buffer.seek(0)
                         plt.close()
                         return app.response_class(buffer.getvalue(), mimetype='image/png'),200
-
 
         except mysql.connector.Error as err:
             print("Exception raised! -> " + str(err) + "\n")
@@ -540,7 +543,7 @@ if __name__ == '__main__':
                                      database=os.environ.get('DATABASE')) as mydb:
             mycursor = mydb.cursor()
             mycursor.execute(
-                "CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY AUTO_INCREMENT, metric_name VARCHAR(100) UNIQUE NOT NULL, min_target_value DOUBLE NOT NULL, max_target_value DOUBLE NOT NULL)")
+                "CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY AUTO_INCREMENT, metric_name VARCHAR(100) UNIQUE NOT NULL, min_target_value DOUBLE NOT NULL, max_target_value DOUBLE NOT NULL, seasonality_period INTEGER)")
             mycursor.execute(
                 "CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY AUTO_INCREMENT, email VARCHAR(30) UNIQUE NOT NULL, password VARCHAR(64) NOT NULL)")
             mydb.commit()  # to make changes effective
