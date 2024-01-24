@@ -12,9 +12,13 @@ from prometheus_api_client import PrometheusConnect, MetricsList, MetricSnapshot
 from datetime import timedelta
 from prometheus_api_client.utils import parse_datetime
 import logging
-from statsmodels.tsa.holtwinters import SimpleExpSmoothing
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing,ExponentialSmoothing
 import matplotlib.pyplot as plt
 from io import BytesIO
+import warnings
+#from statsmodels.tools.sm_exceptions import ConvergenceWarning
+#warnings.simplefilter('ignore', ConvergenceWarning)
+
 def calculate_hash(input_string):
     sha256_hash = hashlib.sha256()
     sha256_hash.update(input_string.encode('utf-8'))
@@ -138,7 +142,7 @@ def metrics_forecasting(metric, minutes):
     min_target_value = metric[2]
     max_target_value = metric[3]
     violation_count = 0
-    start_time = parse_datetime("6h")
+    start_time = parse_datetime("3h")
     end_time = parse_datetime("now")
     status_string_to_be_returned = ""
     metric_string = ""
@@ -148,18 +152,27 @@ def metrics_forecasting(metric, minutes):
         end_time=end_time,
     )
     metric_df = MetricRangeDataFrame(metric_data)
+    logger.info("METRIC_DF\n" + str(metric_df))
     value_list = metric_df['value']
-    logger.info("VALUE_LIST\n " + str(value_list.index))
-    tsr = value_list.resample(rule='5T').mean()
+    logger.info("NUMBER OF NON VALUE " + str(value_list.isna().sum()))
+    logger.info("VALUE_LIST INDEX\n " + str(value_list.index))
+    logger.info("VALUE_LIST\n " + str(value_list))
+    tsr = value_list.resample(rule='30s').mean()
+    logger.info("TSR NUMBER OF NON VALUE " + str(tsr.isna().sum()))
+    tsr = tsr.interpolate()
+    logger.info("TSR INTERPOLATE NUMBER OF NON VALUE " + str(tsr.isna().sum()))
     logger.info("TSR\n " + str(tsr))
+    logger.info("TSR_INDEX\n " + str(tsr.index))
     # Split training and test data (80/20% 0r 90/10)
     len_dataframe = len(metric_df)
     end = 0.8 * len_dataframe
     end_index = round(end)
     train_data = tsr.iloc[:end_index]
+    logger.info("TRAIN DATA NUMBER OF NON VALUE " + str(train_data.isna().sum()))
     test_data = tsr.iloc[end_index:]
+    logger.info("TEST DATA NUMBER OF NON VALUE " + str(test_data.isna().sum()))
     logger.info("TEST DATA\n " + str(test_data))
-    tsmodel = SimpleExpSmoothing(train_data).fit()
+    tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add", seasonal_periods=15).fit()
     # forecast (check 320)
     try:
         minutes_int = int(minutes)  # required because minutes GET parameter is a string
