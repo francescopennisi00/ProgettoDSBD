@@ -173,7 +173,10 @@ def metrics_forecasting(metric, minutes):
     test_data = tsr.iloc[end_index:]
     logger.info("TEST DATA NUMBER OF NON VALUE " + str(test_data.isna().sum()))
     logger.info("TEST DATA\n " + str(test_data))
-    tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add", seasonal_periods=seasonality_period).fit()
+    if seasonality_period == 0 or seasonality_period == 1:
+        tsmodel = ExponentialSmoothing(train_data, trend='add').fit()
+    else:
+        tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add", seasonal_periods=seasonality_period).fit()
     try:
         minutes_int = int(minutes)  # required because minutes GET parameter is a string
     except ValueError:
