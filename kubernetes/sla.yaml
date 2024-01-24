@@ -1,0 +1,83 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: sla-service
+  labels:
+    app: sla-service
+spec:
+  ports:
+    - name: apigw-port
+      protocol: TCP
+      port: 50055
+      targetPort: 50055
+  selector:
+    app: sla
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sla-deployment
+  namespace: weather-app
+  labels:
+    app: sla-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sla
+  template:
+    metadata:
+      labels:
+        app: sla
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: sla
+          image: francesc00/sla_manager_service_image:base
+          imagePullPolicy: Always
+          ports:
+            - name: apigw-port
+              containerPort: 50055
+          volumeMounts:
+            - name: sla-db-root-psw
+              mountPath: /run/secrets/sla-db-root-psw
+              readOnly: true
+            - name: email
+              mountPath: /run/secrets/email
+              readOnly: true
+            - name: admin-password
+              mountPath: /run/secrets/admin-password
+              readOnly: True
+          env:
+            - name: HOSTNAME
+              value: "sla-mysqldb-service"
+            - name: PORT
+              value: "3306"
+            - name: USER
+              value: "root"
+            - name: PASSWORD
+              value: /run/secrets/sla-db-root-psw/psw
+            - name: DATABASE
+              value: "sla"
+            - name: EMAIL
+              value: /run/secrets/email/psw
+            - name: ADMIN_PASSWORD
+              value: /run/secrets/admin-password/psw
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: sla-db-root-psw
+          secret:
+            secretName: sla-db-root-psw
+        - name: email
+          secret:
+            secretName: email
+        - name: admin-password
+          secret:
+            secretName: admin-password

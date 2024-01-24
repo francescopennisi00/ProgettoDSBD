@@ -8,8 +8,8 @@ metadata:
 data:
   prometheus.rules: |-
     groups:
-        - name: weather
-          rules:
+      - name: weather
+        rules:
           - record: UM_success_requests_total
             expr: UM_requests_total - UM_failure_requests_total
     
@@ -35,40 +35,40 @@ data:
             expr: WORKER_success_requests_to_OpenWeather_total / clamp_min(WORKER_requests_to_OpenWeather_total, 1) * 100
     
           - record: WORKER_DB_avg_query_durations_nanoseconds
-            expr: avg(WORKER_query_durations_nanoseconds_DB)
-          
+            expr: WORKER_query_durations_nanoseconds_DB_sum / clamp_min(WORKER_query_durations_nanoseconds_DB_count, 1)
+    
           - record: WORKER_DB_median_query_durations_nanoseconds
-            expr: histogram_quantile(0.5, WORKER_query_durations_nanoseconds_DB)
+            expr: histogram_quantile(0.5, sum(rate(WORKER_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: WORKER_DB_90_quantile_query_durations_nanoseconds
-            expr: histogram_quantile(0.9, WORKER_query_durations_nanoseconds_DB)
+            expr: histogram_quantile(0.9, sum(rate(WORKER_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: NOTIFIER_DB_avg_query_durations_nanoseconds
-            expr: avg(NOTIFIER_query_durations_nanoseconds_DB)
+            expr: NOTIFIER_query_durations_nanoseconds_DB_sum / clamp_min(NOTIFIER_query_durations_nanoseconds_DB_count, 1)
     
           - record: NOTIFIER_DB_median_query_durations_nanoseconds
-            expr: histogram_quantile(0.5, NOTIFIER_query_durations_nanoseconds_DB)
+            expr: histogram_quantile(0.5, sum(rate( NOTIFIER_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: NOTIFIER_DB_90_quantile_query_durations_nanoseconds
-            expr: histogram_quantile(0.9, NOTIFIER_query_durations_nanoseconds_DB)
+            expr:  histogram_quantile(0.9, sum(rate( NOTIFIER_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: UM_DB_avg_query_durations_nanoseconds
-            expr: avg(UM_query_durations_nanoseconds_DB)
+            expr: UM_query_durations_nanoseconds_DB_sum / clamp_min(UM_query_durations_nanoseconds_DB_count,1)
     
           - record: UM_DB_median_query_durations_nanoseconds
-            expr: histogram_quantile(0.5, UM_query_durations_nanoseconds_DB)
+            expr:  histogram_quantile(0.5, sum(rate( UM_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: UM_DB_90_quantile_query_durations_nanoseconds
-            expr: histogram_quantile(0.9, UM_query_durations_nanoseconds_DB)
+            expr: histogram_quantile(0.9, sum(rate( UM_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: WMS_DB_avg_query_durations_nanoseconds
-            expr: avg(WMS_query_durations_nanoseconds_DB)
+            expr: WMS_query_durations_nanoseconds_DB_sum / clamp_min(WMS_query_durations_nanoseconds_DB_count,1)
     
           - record: WMS_DB_median_query_durations_nanoseconds
-            expr: histogram_quantile(0.5, WMS_query_durations_nanoseconds_DB)
+            expr: histogram_quantile(0.5, sum(rate(  WMS_query_durations_nanoseconds_DB_bucket[5m])) by (le))
     
           - record: WMS_DB_90_quantile_query_durations_nanoseconds
-            expr: histogram_quantile(0.9, WMS_query_durations_nanoseconds_DB)
+            expr: histogram_quantile(0.9, sum(rate(  WMS_query_durations_nanoseconds_DB_bucket[5m])) by (le))
 
   prometheus.yml: |-
     global:
@@ -92,3 +92,7 @@ data:
         scrape_interval: 30s
         static_configs:
           - targets: ['notifier-service:50055']
+      - job_name: cadvisor
+        scrape_interval: 30s
+        static_configs:
+          - targets: ['cadvisor:8080']

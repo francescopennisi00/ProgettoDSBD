@@ -46,13 +46,6 @@ spec:
                 name: wms-service
                 port:
                   number: 50051
-          - path: /logout
-            pathType: Prefix
-            backend:
-              service:
-                name: um-service
-                port:
-                  number: 50053
           - path: /show_rules
             pathType: Prefix
             backend:
@@ -60,3 +53,45 @@ spec:
                 name: wms-service
                 port:
                   number: 50051
+          - path: /adminlogin
+            pathType: Prefix
+            backend:
+              service:
+                name: sla-service
+                port:
+                  number: 50055
+          - path: /SLA_update_metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: sla-service
+                port:
+                  number: 50055
+          - path: /SLA_delete_metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: sla-service
+                port:
+                  number: 50055
+          - path: /SLA_metrics_status
+            pathType: Prefix
+            backend:
+              service:
+                name: sla-service
+                port:
+                  number: 50055
+          - path: /SLA_metrics_violations
+            pathType: Prefix
+            backend:
+              service:
+                name: sla-service
+                port:
+                  number: 50055
+          - path: /SLA_forecasting_violations
+            pathType: Prefix
+            backend:
+              service:
+                name: sla-service
+                port:
+                  number: 50055

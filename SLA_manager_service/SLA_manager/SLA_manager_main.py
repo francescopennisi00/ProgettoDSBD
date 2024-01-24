@@ -197,7 +197,7 @@ def metrics_forecasting(metric, minutes):
 def create_app():
     app = Flask(__name__)
 
-    @app.route('/login', methods=['POST'])
+    @app.route('/adminlogin', methods=['POST'])
     def admin_login():
         # verify if data received is a JSON
         if request.is_json:

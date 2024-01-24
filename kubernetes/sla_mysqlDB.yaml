@@ -1,0 +1,62 @@
+kind: Service
+apiVersion: v1
+metadata:
+  namespace: weather-app
+  name: sla-mysqldb-service
+  labels:
+    app: sla-mysqldb-service
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: sla-mysqldb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sla-mysqldb-stateful-set
+  namespace: weather-app
+  labels:
+    app: sla-mysqldb-stateful-set
+spec:
+  serviceName: "sla-mysqldb-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sla-mysqldb
+  template:
+    metadata:
+      labels:
+        app: sla-mysqldb
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: sla-mysqldb
+          image: mysql:latest
+          imagePullPolicy: Always
+          ports:
+            - name: sla-dbp
+              containerPort: 3306
+          volumeMounts:
+            - name: sla-mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: sla-db-root-psw
+              mountPath: /run/secrets/sla-db-root-psw
+              readOnly: true
+          env:
+            - name: MYSQL_ROOT_PASSWORD_FILE
+              value: /run/secrets/sla-db-root-psw/psw
+            - name: MYSQL_DATABASE
+              value: "sla"
+      volumes:
+        - name: sla-db-root-psw
+          secret:
+            secretName: sla-db-root-psw
+  volumeClaimTemplates:
+    - metadata:
+        name: sla-mysql-persistent-storage
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
