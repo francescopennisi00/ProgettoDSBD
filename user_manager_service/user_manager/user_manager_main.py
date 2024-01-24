@@ -17,6 +17,11 @@ import hashlib
 import datetime
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge,Histogram
 from flask import Response
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # definition of the metrics to be exposed
@@ -29,20 +34,6 @@ REGISTERED_USERS_COUNT = Gauge('UM_registered_users_count', 'Total number of reg
 DELTA_TIME = Gauge('UM_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which user-manager responses')
 QUERY_DURATIONS_HISTOGRAM = Histogram('UM_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds', buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
 # buckets indicated because of measuring time in nanoseconds
-
-# create lock objects for mutual exclusion in acquire stdout and stderr resource
-lock = threading.Lock()
-lock_error = threading.Lock()
-
-
-def safe_print(message):
-    with lock:
-        print(message)
-
-
-def safe_print_error(error):
-    with lock_error:
-        sys.stderr.write(error)
 
 
 class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
@@ -70,7 +61,7 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                         RESPONSE_TO_WMS.inc()
                         return WMS_um_pb2.Reply(user_id=-3)  # token is not valid: email not present
             except mysql.connector.Error as error:
-                safe_print_error("Exception raised! -> {0}".format(str(error)))
+                logger.error("Exception raised! -> {0}".format(str(error)))
                 RESPONSE_TO_WMS.inc()
                 return WMS_um_pb2.Reply(user_id=-2)
             # verify that password is correct verifying digital signature with secret = password
@@ -104,7 +95,7 @@ class NotifierUm(notifier_um_pb2_grpc.NotifierUmServicer):
                 else:
                     email = "not present anymore"
         except mysql.connector.Error as error:
-            safe_print_error("Exception raised! -> {0}".format(str(error)))
+            logger.error("Exception raised! -> {0}".format(str(error)))
             email = "null"
         RESPONSE_TO_NOTIFIER.inc()
         return notifier_um_pb2.Reply(email=email)
@@ -116,7 +107,7 @@ def serve_notifier():
     notifier_um_pb2_grpc.add_NotifierUmServicer_to_server(NotifierUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    safe_print("Notifier thread server started, listening on " + port + "\n")
+    logger.info("Notifier thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -126,7 +117,7 @@ def serve_wms():
     WMS_um_pb2_grpc.add_WMSUmServicer_to_server(WMSUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    safe_print("WMS thread server started, listening on " + port + "\n")
+    logger.info("WMS thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -144,7 +135,7 @@ def delete_UserConstraints_By_UserID(userId):
             response = stub.RequestDeleteUser_Constraints(WMS_um_pb2.User(user_id=userId))
             code_to_return = response.response_code  # user id < 0 if some error occurred
     except grpc.RpcError as error:
-        safe_print_error("gRPC error! -> " + str(error) + "\n")
+        logger.error("gRPC error! -> " + str(error) + "\n")
         code_to_return = -1
     return code_to_return
 
@@ -163,7 +154,7 @@ def create_app():
                 data_dict = request.get_json()
                 if data_dict:
                     email = data_dict.get("email")
-                    safe_print("Email received:" + email)
+                    logger.info("Email received:" + email)
                     password = data_dict.get("psw")
                     timestamp_client = data_dict.get("timestamp_client")
                     try:
@@ -194,11 +185,11 @@ def create_app():
                             return f"Email already in use! Try to sign in!", 401
 
                     except mysql.connector.Error as err:
-                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            safe_print_error(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -222,7 +213,7 @@ def create_app():
                 data_dict = request.get_json()
                 if data_dict:
                     email = data_dict.get("email")
-                    safe_print("Email received:" + email)
+                    logger.info("Email received:" + email)
                     password = data_dict.get("psw")
                     timestamp_client = data_dict.get("timestamp_client")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
@@ -253,7 +244,7 @@ def create_app():
                                 return f"Login successfully made! JWT Token: {token}", 200
 
                     except mysql.connector.Error as err:
-                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -277,7 +268,7 @@ def create_app():
                 data_dict = request.get_json()
                 if data_dict:
                     email = data_dict.get("email")
-                    safe_print("Email received:" + email)
+                    logger.info("Email received:" + email)
                     password = data_dict.get("psw")
                     timestamp_client = data_dict.get("timestamp_client")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
@@ -315,11 +306,11 @@ def create_app():
                                     DELTA_TIME.set(time.time_ns() - timestamp_client)
                                     return "Error in grpc communication, account not deleted", 500
                     except mysql.connector.Error as err:
-                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            safe_print_error(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -347,7 +338,7 @@ app = create_app()
 def serve_apigateway():
     port = 50053
     hostname = socket.gethostname()
-    safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    logger.info(f'Hostname: {hostname} -> server starting on port {str(port)}')
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 
@@ -359,7 +350,7 @@ if __name__ == '__main__':
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
 
-    print("ENV variables initialization done")
+    logger.info("ENV variables initialization done")
 
     # Creating table users if not exits
     try:
@@ -381,15 +372,15 @@ if __name__ == '__main__':
             sys.stderr.write(f"Exception raised in rollback: {e}\n")
         sys.exit("User Manager terminating after an error...\n")
 
-    safe_print("Starting notifier serving thread!\n")
+    logger.info("Starting notifier serving thread!\n")
     threadNotifier = threading.Thread(target=serve_notifier)
     threadNotifier.daemon = True
     threadNotifier.start()
-    safe_print("Starting WMS serving thread!\n")
+    logger.info("Starting WMS serving thread!\n")
     threadWMS = threading.Thread(target=serve_wms)
     threadWMS.daemon = True
     threadWMS.start()
-    safe_print("Starting API Gateway serving thread!\n")
+    logger.info("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()

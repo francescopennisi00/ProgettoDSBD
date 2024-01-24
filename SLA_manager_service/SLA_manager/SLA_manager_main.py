@@ -15,6 +15,10 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 def calculate_hash(input_string):
     sha256_hash = hashlib.sha256()
     sha256_hash.update(input_string.encode('utf-8'))
@@ -40,7 +44,7 @@ def authenticate(auth_header):
                 else:
                     return -3  # token is not valid: email not present
         except mysql.connector.Error as error:
-            print("Exception raised! -> {0}".format(str(error)))
+            logger.error("Exception raised! -> {0}".format(str(error)))
             return -2
         # verify that password is correct verifying digital signature with secret = password
         jwt.decode(jwt_token, password, algorithms=['HS256'])
@@ -49,10 +53,6 @@ def authenticate(auth_header):
         return -1  # token is expired
     except jwt.InvalidTokenError:
         return -3  # token is not valid: password incorrect
-
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 def verify_metrics_current_violation_status(
@@ -64,11 +64,11 @@ def verify_metrics_current_violation_status(
     violation_count = 0
 
     status_string_to_be_returned = ""
-    logger.info("Metric list" + str(metrics_list))
+    logger.info("\nMetric list\n" + str(metrics_list))
     for metric in metrics_list:
-        logger.info("metric" + str(metric))
+        logger.info("\nmetric\n" + str(metric))
         metric_name = metric[1]
-        logger.info("metric name" + metric_name)
+        logger.info("metric name: " + metric_name)
         min_target_value = metric[2]
         max_target_value = metric[3]
 
@@ -77,7 +77,7 @@ def verify_metrics_current_violation_status(
         actual_string_value = queryResult[0].get("value")[1]
         try:
             actual_value = float(actual_string_value)
-            print(f"Metric {metric_name} -> actual value: {actual_value}\n")
+            logger.info(f"Metric {metric_name} -> actual value: {actual_value}\n")
             if actual_value < min_target_value or actual_value > max_target_value:
                 metric_string = f"Metric name: {metric_name}" + "<br>" + f"Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: VIOLATED!" + "<br><br>"
                 violation_count = violation_count + 1
@@ -86,7 +86,7 @@ def verify_metrics_current_violation_status(
                 metric_string = f"Metric name: {metric_name}" + "<br>" + f"Actual value: {str(actual_value)} | Min target value: {str(min_target_value)} | Max target value: {str(max_target_value)} | Metric status: NOT VIOLATED!" + "<br><br>"
                 status_string_to_be_returned = status_string_to_be_returned + metric_string
         except ValueError:
-            print("Metric actual value is not a decimal number!")
+            logger.error("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
     status_string_to_be_returned = status_string_to_be_returned + f"Number of violation: {str(violation_count)} " + "<br><br>"
     return status_string_to_be_returned
@@ -113,18 +113,18 @@ def violation_counter(list_of_metrics, hours):
             start_time=start_time,
             end_time=end_time,
         )
-        logger.info("METRIC " + str(metric_data))
+        logger.info("\nMETRIC\n " + str(metric_data))
         try:
             for element in metric_data[0].get('values'):
                 actual_string_value = element[1]
                 actual_value = float(actual_string_value)
-                print(f"Metric {metric_name} -> actual value: {actual_value}\n")
+                logger.info(f"Metric {metric_name} -> actual value: {actual_value}\n")
                 if actual_value < min_target_value or actual_value > max_target_value:
                     violation_count = violation_count + 1
             if violation_count > 0:
                 metric_string = f"Metric name: {metric_name} Violations number:{violation_count} <br>"
         except ValueError:
-            print("Metric actual value is not a decimal number!")
+            logger.error("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
         status_string_to_be_returned = status_string_to_be_returned + metric_string
     return status_string_to_be_returned
@@ -150,24 +150,24 @@ def metrics_forecasting(metric, minutes):
     metric_df = MetricRangeDataFrame(metric_data)
     logger.info("METRIC_DF\n" + str(metric_df))
     value_list = metric_df['value']
-    logger.info("NUMBER OF NON VALUE " + str(value_list.isna().sum()))
-    logger.info("VALUE_LIST INDEX\n " + str(value_list.index))
-    logger.info("VALUE_LIST\n " + str(value_list))
+    logger.info("NUMBER OF NON VALUE: " + str(value_list.isna().sum()))
+    logger.info("\nVALUE_LIST INDEX\n " + str(value_list.index))
+    logger.info("\nVALUE_LIST\n " + str(value_list))
     tsr = value_list.resample(rule='30s').mean()
-    logger.info("TSR NUMBER OF NON VALUE " + str(tsr.isna().sum()))
+    logger.info("\nTSR NUMBER OF NON VALUE: " + str(tsr.isna().sum()))
     tsr = tsr.interpolate()
-    logger.info("TSR INTERPOLATE NUMBER OF NON VALUE " + str(tsr.isna().sum()))
-    logger.info("TSR\n " + str(tsr))
-    logger.info("TSR_INDEX\n " + str(tsr.index))
+    logger.info("\nTSR INTERPOLATE NUMBER OF NON VALUE: " + str(tsr.isna().sum()))
+    logger.info("\nTSR\n " + str(tsr))
+    logger.info("\nTSR_INDEX\n " + str(tsr.index))
     # Split training and test data (80/20%)
     len_dataframe = len(metric_df)
     end = 0.8 * len_dataframe
     end_index = round(end)
     train_data = tsr.iloc[:end_index]
-    logger.info("TRAIN DATA NUMBER OF NON VALUE " + str(train_data.isna().sum()))
+    logger.info("TRAIN DATA NUMBER OF NON VALUE: " + str(train_data.isna().sum()))
     test_data = tsr.iloc[end_index:]
-    logger.info("TEST DATA NUMBER OF NON VALUE " + str(test_data.isna().sum()))
-    logger.info("TEST DATA\n " + str(test_data))
+    logger.info("TEST DATA NUMBER OF NON VALUE: " + str(test_data.isna().sum()))
+    logger.info("\nTEST DATA\n " + str(test_data))
     if seasonality_period == 0 or seasonality_period == 1:
         tsmodel = ExponentialSmoothing(train_data, trend='add').fit()
     else:
@@ -178,18 +178,18 @@ def metrics_forecasting(metric, minutes):
         return "parameter_error"
     steps = minutes_int*2  # each step takes 30 seconds, 2 step each minute
     prediction = tsmodel.forecast(steps)
-    logger.info("PREDICTION\n " + str(prediction))
-    logger.info("\nTYPE PREDICTION\n " + str(type(prediction)))
+    logger.info("\nPREDICTION\n " + str(prediction))
+    logger.info("\nTYPE PREDICTION: " + str(type(prediction)))
     try:
         for element in prediction:
-            logger.info("\nELEMENT OF PREDICTION " + str(element))
+            logger.info("\nELEMENT OF PREDICTION\n " + str(element))
             actual_value = float(element)
             logger.info(f"Metric {metric_name} -> actual value: {actual_value}\n")
             if actual_value < min_target_value or actual_value > max_target_value:
                 violation_count = violation_count + 1
         status_string_to_be_returned = f"Metric name: {metric_name} Probability of violations in the next {minutes} minutes: {str(100*violation_count/steps)}%"
     except ValueError:
-        print("Metric actual value is not a decimal number!")
+        logger.error("Metric actual value is not a decimal number!")
         return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
     return train_data, test_data, prediction, status_string_to_be_returned
 
@@ -206,7 +206,7 @@ def create_app():
                 data_dict = request.get_json()
                 if data_dict:
                     email = data_dict.get("email")
-                    print("Email received:" + email)
+                    logger.info("Email received:" + email)
                     password = data_dict.get("psw")
                     hash_psw = calculate_hash(password)  # in the DB we have hash of the password
                     try:
@@ -230,7 +230,7 @@ def create_app():
                                 return f"Login successfully made! JWT Token: {token}", 200
 
                     except mysql.connector.Error as err:
-                        print("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -245,7 +245,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                print("Data received:" + str(data_dict))
+                logger.info("Data received:" + str(data_dict))
                 if data_dict:
                     authorization_header = request.headers.get('Authorization')
                     if authorization_header and authorization_header.startswith('Bearer '):
@@ -279,25 +279,25 @@ def create_app():
                                 mycursor.execute("SELECT * FROM metrics WHERE metric_name = %s", (metric,))
                                 row = mycursor.fetchone()
                                 if not row:
-                                    print("There is no metric with that name\n")
+                                    logger.info("There is no metric with that name\n")
                                     mycursor.execute(
                                         "INSERT INTO metrics (metric_name, min_target_value, max_target_value, seasonality_period) VALUES (%s, %s, %s, %s)",
                                         (metric, min, max, seasonality_period))
-                                    print("Inserting new metric!\n")
+                                    logger.info("Inserting new metric!\n")
                                 else:
                                     mycursor.execute(
                                         "UPDATE metrics SET min_target_value = %s, max_target_value = %s, seasonality_period=%s WHERE metric_name = %s",
                                         (min, max, seasonality_period, metric))
-                                    print("Updating metric table!\n")
+                                    logger.info("Updating metric table!\n")
                             mydb.commit()
                             return "Metric table updated correctly!", 200
 
                     except mysql.connector.Error as err:
-                        print("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            print(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -312,7 +312,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                print("Data received:" + str(data_dict))
+                logger.info("Data received:" + str(data_dict))
                 if data_dict:
                     authorization_header = request.headers.get('Authorization')
                     if authorization_header and authorization_header.startswith('Bearer '):
@@ -355,11 +355,11 @@ def create_app():
                             return string_to_be_returned, 200
 
                     except mysql.connector.Error as err:
-                        print("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            print(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         return f"Error in connecting to database: {str(err)}", 500
 
             except Exception as e:
@@ -399,11 +399,11 @@ def create_app():
                     return f"STATUS OF METRICS: <br><br> {result}", 200
 
         except mysql.connector.Error as err:
-            print("Exception raised! -> " + str(err) + "\n")
+            logger.error("Exception raised! -> " + str(err) + "\n")
             try:
                 mydb.rollback()
             except Exception as exe:
-                print(f"Exception raised in rollback: {exe}\n")
+                logger.error(f"Exception raised in rollback: {exe}\n")
             return f"Error in connecting to database: {str(err)}", 500
 
     @app.route('/SLA_metrics_violations')
@@ -440,11 +440,11 @@ def create_app():
                     return f"METRICS VIOLATED: <br><br> {result_1hour} <br><br> {result_3hour} <br><br> {result_6hour}", 200
 
         except mysql.connector.Error as err:
-            print("Exception raised! -> " + str(err) + "\n")
+            logger.error("Exception raised! -> " + str(err) + "\n")
             try:
                 mydb.rollback()
             except Exception as exe:
-                print(f"Exception raised in rollback: {exe}\n")
+                logger.error(f"Exception raised in rollback: {exe}\n")
             return f"Error in connecting to database: {str(err)}", 500
 
     @app.route('/SLA_forecasting_violations')
@@ -500,11 +500,11 @@ def create_app():
                         return app.response_class(buffer.getvalue(), mimetype='image/png'),200
 
         except mysql.connector.Error as err:
-            print("Exception raised! -> " + str(err) + "\n")
+            logger.error("Exception raised! -> " + str(err) + "\n")
             try:
                 mydb.rollback()
             except Exception as exe:
-                print(f"Exception raised in rollback: {exe}\n")
+                logger.error(f"Exception raised in rollback: {exe}\n")
             return f"Error in connecting to database: {str(err)}", 500
 
     return app
@@ -520,16 +520,16 @@ if __name__ == '__main__':
     with open(secret_password_path, 'r') as file:
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
-    secret_password_path = os.environ.get('EMAIL')
-    with open(secret_password_path, 'r') as file:
-        secret_password_value = file.read()
-    os.environ['EMAIL'] = secret_password_value
-    secret_password_path = os.environ.get('ADMIN_PASSWORD')
-    with open(secret_password_path, 'r') as file:
-        secret_password_value = file.read()
-    os.environ['ADMIN_PASSWORD'] = secret_password_value
+    secret_admin_email_path = os.environ.get('EMAIL')
+    with open(secret_admin_email_path, 'r') as file:
+        secret_admin_email_value = file.read()
+    os.environ['EMAIL'] = secret_admin_email_value
+    secret_admin_password_path = os.environ.get('ADMIN_PASSWORD')
+    with open(secret_admin_password_path, 'r') as file:
+        secret_admin_password_value = file.read()
+    os.environ['ADMIN_PASSWORD'] = secret_admin_password_value
 
-    print("ENV variables initialization done")
+    logger.info("ENV variables initialization done")
 
     # Creating table admins if not exits
     try:
@@ -558,5 +558,5 @@ if __name__ == '__main__':
 
     port = 50055
     hostname = socket.gethostname()
-    print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    logger.info(f'Hostname: {hostname} -> server starting on port {str(port)}')
     app.run(host='0.0.0.0', port=port, threaded=True)

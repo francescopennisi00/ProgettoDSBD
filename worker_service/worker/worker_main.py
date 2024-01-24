@@ -11,6 +11,11 @@ import threading
 from flask import Flask
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
 from flask import Response
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # definition of the metrics to be exposed
@@ -23,28 +28,13 @@ QUERY_DURATIONS_HISTOGRAM = Histogram('WORKER_query_durations_nanoseconds_DB', '
 # buckets indicated because of measuring time in nanoseconds
 
 
-# create lock objects for mutual exclusion in acquire stdout and stderr resource
-lock = threading.Lock()
-lock_error = threading.Lock()
-
-
-def safe_print(msg):
-    with lock:
-        print(msg)
-
-
-def safe_print_error(error):
-    with lock_error:
-        sys.stderr.write(error)
-
-
 def commit_completed(er, partitions):
     if er:
-        safe_print(str(er))
+        logger.error(str(er))
     else:
-        safe_print("Commit done!\n")
-        safe_print("Committed partition offsets: " + str(partitions) + "\n")
-        safe_print("Rules fetched and stored in DB in order to save current work!\n")
+        logger.info("Commit done!\n")
+        logger.info("Committed partition offsets: " + str(partitions) + "\n")
+        logger.info("Rules fetched and stored in DB in order to save current work!\n")
 
 
 def make_query(query):
@@ -59,28 +49,28 @@ def make_query(query):
         if response.get('cod') != 200:
             ERROR_REQUEST_OPEN_WEATHER.inc()
             raise Exception('Query failed: ' + response.get('message'))
-        safe_print(json.dumps(response) + "\n")
+        logger.info(json.dumps(response) + "\n")
         return response
     except requests.JSONDecodeError as er:
         ERROR_REQUEST_OPEN_WEATHER.inc()
         end_time = time.time_ns()
         DELTA_TIME.set(end_time-start_time)
-        safe_print_error(f'JSON Decode error: {er}\n')
+        logger.error(f'JSON Decode error: {er}\n')
         raise SystemExit
     except requests.HTTPError as er:
         ERROR_REQUEST_OPEN_WEATHER.inc()
         end_time = time.time_ns()
         DELTA_TIME.set(end_time-start_time)
-        safe_print_error(f'HTTP Error: {er}\n')
+        logger.error(f'HTTP Error: {er}\n')
         raise SystemExit
     except requests.exceptions.RequestException as er:
         ERROR_REQUEST_OPEN_WEATHER.inc()
         end_time = time.time_ns()
         DELTA_TIME.set(end_time-start_time)
-        safe_print_error(f'Request failed: {er}\n')
+        logger.error(f'Request failed: {er}\n')
         raise SystemExit
     except Exception as er:
-        safe_print_error(f'Error: {er}\n')
+        logger.error(f'Error: {er}\n')
         raise SystemExit
 
 
@@ -186,11 +176,11 @@ def find_current_work():
             else:
                 events_to_be_sent = "{}"
     except mysql.connector.Error as error:
-        safe_print_error("Exception raised! -> " + str(error) + "\n")
+        logger.error("Exception raised! -> " + str(error) + "\n")
         try:
             db_conn.rollback()
         except Exception as ex:
-            safe_print_error(f"Exception raised in rollback: {ex}\n")
+            logger.error(f"Exception raised in rollback: {ex}\n")
         return False
     return events_to_be_sent
 
@@ -200,11 +190,11 @@ def find_current_work():
 # failed delivery (after retries).
 def delivery_callback(err, msg):
     if err:
-        safe_print_error('%% Message failed delivery: %s\n' % err)
+        logger.error('%% Message failed delivery: %s\n' % err)
         raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
     else:
         KAFKA_MESSAGE_DELIVERED.inc()
-        safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
+        logger.info('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
         try:
             DBstart_time = time.time_ns()
@@ -217,11 +207,11 @@ def delivery_callback(err, msg):
                 DBend_time = time.time_ns()
                 QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
         except mysql.connector.Error as err:
-            safe_print_error("Exception raised!\n" + str(err))
+            logger.error("Exception raised!\n" + str(err))
             try:
                 mydb.rollback()
             except Exception as exe:
-                safe_print_error(f"Exception raised in rollback: {exe}\n")
+                logger.error(f"Exception raised in rollback: {exe}\n")
             raise SystemExit
 
 
@@ -231,11 +221,11 @@ def produce_kafka_message(topic_name, kafka_producer, message):
         kafka_producer.produce(topic_name, value=message, callback=delivery_callback)
         KAFKA_MESSAGE.inc()
     except BufferError:
-        safe_print_error(
+        logger.error(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
         return False
     # Wait until the message have been delivered
-    safe_print_error("Waiting for message to be delivered\n")
+    logger.error("Waiting for message to be delivered\n")
     kafka_producer.flush()
     return True
 
@@ -254,7 +244,7 @@ def create_app():
 def serve_prometheus():
     port = 50055
     hostname = socket.gethostname()
-    safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    logger.info(f'Hostname: {hostname} -> server starting on port {str(port)}')
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 
@@ -276,9 +266,9 @@ if __name__ == "__main__":
         secret_apikey_value = file.read()
     os.environ['APIKEY'] = secret_apikey_value
 
-    print("ENV variables initialization done")
+    logger.info("ENV variables initialization done")
 
-    safe_print("Starting Prometheus serving thread!\n")
+    logger.info("Starting Prometheus serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_prometheus)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
@@ -306,11 +296,11 @@ if __name__ == "__main__":
             DBend_time = time.time_ns()
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
     except mysql.connector.Error as err:
-        safe_print_error("Exception raised! -> " + str(err) + "\n")
+        logger.error("Exception raised! -> " + str(err) + "\n")
         try:
             mydb.rollback()
         except Exception as exe:
-            safe_print_error(f"Exception raised in rollback: {exe}\n")
+            logger.error(f"Exception raised in rollback: {exe}\n")
         sys.exit("Exiting...\n")
 
     current_work = find_current_work()
@@ -327,10 +317,10 @@ if __name__ == "__main__":
     # Create topic "event_to_be_notified" if not exists
     list_topics_metadata = kadmin.list_topics()
     topics = list_topics_metadata.topics  # Returns a dict()
-    safe_print(f"LIST_TOPICS: {list_topics_metadata}")
-    safe_print(f"TOPICS: {topics}")
+    logger.info(f"LIST_TOPICS: {list_topics_metadata}")
+    logger.info(f"TOPICS: {topics}")
     topic_names = set(topics.keys())
-    safe_print(f"TOPIC_NAMES: {topic_names}")
+    logger.info(f"TOPIC_NAMES: {topic_names}")
     found = False
     for name in topic_names:
         if name == topic:
@@ -350,7 +340,7 @@ if __name__ == "__main__":
         while produce_kafka_message(topic, producer_kafka, current_work) == False:
             pass
     else:
-        safe_print("There is no backlog of work\n")
+        logger.info("There is no backlog of work\n")
 
     # start Kafka subscription
     consumer_kafka = confluent_kafka.Consumer(
@@ -359,7 +349,7 @@ if __name__ == "__main__":
     try:
         consumer_kafka.subscribe(['event_update'])  # the worker_service is also a Consumer related to the WMS Producer
     except confluent_kafka.KafkaException as ke:
-        safe_print_error("Kafka exception raised! -> " + str(ke) + "\n")
+        logger.error("Kafka exception raised! -> " + str(ke) + "\n")
         consumer_kafka.close()
         sys.exit("Terminate after Exception raised in Kafka topic subscribe\n")
 
@@ -372,10 +362,10 @@ if __name__ == "__main__":
                 # Initial message consumption may take up to
                 # `session.timeout.ms` for the consumer group to
                 # rebalance and start consuming
-                safe_print("Waiting for message or event/error in poll()\n")
+                logger.info("Waiting for message or event/error in poll()\n")
                 continue
             elif msg.error():
-                safe_print('error: {}\n'.format(msg.error()))
+                logger.info('error: {}\n'.format(msg.error()))
                 if msg.error().code() == confluent_kafka.KafkaError.UNKNOWN_TOPIC_OR_PART:
                     raise SystemExit
             else:
@@ -396,16 +386,16 @@ if __name__ == "__main__":
                 # in the Kafka message
 
                 record_key = msg.key()
-                safe_print("RECORD_KEY: " + str(record_key))
+                logger.info("RECORD_KEY: " + str(record_key))
                 record_value = msg.value()
-                safe_print("RECORD_VALUE: " + str(record_value))
+                logger.info("RECORD_VALUE: " + str(record_value))
                 data = json.loads(record_value)
-                safe_print("DATA: " + str(data))
+                logger.info("DATA: " + str(data))
                 # update current_work in DB
                 userId_list = data.get("user_id")
-                safe_print("USER_ID_LIST: " + str(userId_list))
+                logger.info("USER_ID_LIST: " + str(userId_list))
                 loc = data.get('location')
-                safe_print("LOCATION: " + str(loc))
+                logger.info("LOCATION: " + str(loc))
                 try:
                     with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
                                                  user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
@@ -427,18 +417,18 @@ if __name__ == "__main__":
                             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                         mydb.commit()  # to make changes effective after inserting rules for ALL the users
                 except mysql.connector.Error as err:
-                    safe_print_error("Exception raised! -> " + str(err) + "\n")
+                    logger.error("Exception raised! -> " + str(err) + "\n")
                     try:
                         mydb.rollback()
                     except Exception as exe:
-                        safe_print_error(f"Exception raised in rollback: {exe}\n")
+                        logger.error(f"Exception raised in rollback: {exe}\n")
                     raise SystemExit
 
                 # make commit
                 try:
                     consumer_kafka.commit(asynchronous=True)
                 except Exception as e:
-                    safe_print_error("Error in commit! -> " + str(e) + "\n")
+                    logger.error("Error in commit! -> " + str(e) + "\n")
                     raise SystemExit
 
                 # call to find_current_work and publish them in topic "event_to_be_sent"

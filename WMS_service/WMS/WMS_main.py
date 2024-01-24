@@ -15,6 +15,11 @@ from flask import request
 import socket
 from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
 from flask import Response
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # definition of the metrics to be exposed
@@ -28,20 +33,6 @@ REQUEST_TO_UM = Counter('WMS_requests_to_UM', 'Total number of requests sent to 
 DELTA_TIME = Gauge('WMS_response_time_client', 'Latency beetween instant in which client sends the API CALL and instant in which wms-manager responses')
 QUERY_DURATIONS_HISTOGRAM = Histogram('WMS_query_durations_nanoseconds_DB', 'DB query durations in nanoseconds', buckets=[5000000, 10000000, 25000000, 50000000, 75000000, 100000000, 250000000, 500000000, 750000000, 1000000000, 2500000000,5000000000,7500000000,10000000000])
 # buckets indicated because of measuring time in nanoseconds
-
-# create lock objects for mutual exclusion in acquire stdout and stderr resource
-lock = threading.Lock()
-lock_error = threading.Lock()
-
-
-def safe_print(msg):
-    with lock:
-        print(msg)
-
-
-def safe_print_error(error):
-    with lock_error:
-        sys.stderr.write(error)
 
 
 class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
@@ -59,11 +50,11 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                 QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 return WMS_um_pb2.Response_Code(response_code=200)
         except mysql.connector.Error as error:
-            safe_print_error("Exception raised! -> {0}".format(str(error)))
+            logger.error("Exception raised! -> {0}".format(str(error)))
             try:
                 mydb.rollback()
             except Exception as exe:
-                safe_print_error(f"Exception raised in rollback: {exe}\n")
+                logger.error(f"Exception raised in rollback: {exe}\n")
             return WMS_um_pb2.Response_Code(response_code=-1)
 
 
@@ -216,7 +207,7 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
             break
     if found == True:
         final_json_dict['snow'] = snow_list
-    safe_print("FINAL JSON DICT" + str(final_json_dict))
+    logger.info("FINAL JSON DICT" + str(final_json_dict))
     return json.dumps(final_json_dict)
 
 
@@ -228,14 +219,14 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
 # the WMS from sending the same trigger message to worker(s)
 def delivery_callback(err, msg):
     if err:
-        safe_print_error('%% Message failed delivery: %s\n' % err)
+        logger.error('%% Message failed delivery: %s\n' % err)
         raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
     else:
         KAFKA_MESSAGE_DELIVERED.inc()
-        safe_print_error('%% Message delivered to %s, partition[%d] @ %d\n' %
+        logger.error('%% Message delivered to %s, partition[%d] @ %d\n' %
                          (msg.topic(), msg.partition(), msg.offset()))
         message_dict = json.loads(msg.value())
-        safe_print(message_dict)
+        logger.info(message_dict)
         rows_id_list = message_dict.get("rows_id")
         try:
             with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
@@ -243,7 +234,7 @@ def delivery_callback(err, msg):
                                          database=os.environ.get('DATABASE')) as mydb:
                 mycursor = mydb.cursor()
                 for id in rows_id_list:
-                    safe_print("ID in ROWS_ID_LIST  " + str(id))
+                    logger.info("ID in ROWS_ID_LIST  " + str(id))
                     DBstart_time = time.time_ns()
                     mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s",
                                      (str(id),))
@@ -251,11 +242,11 @@ def delivery_callback(err, msg):
                     QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 mydb.commit()  # to make changes effective
         except mysql.connector.Error as err:
-            safe_print_error("Exception raised!\n" + str(err))
+            logger.error("Exception raised!\n" + str(err))
             try:
                 mydb.rollback()
             except Exception as exe:
-                safe_print_error(f"Exception raised in rollback: {exe}\n")
+                logger.error(f"Exception raised in rollback: {exe}\n")
             raise SystemExit
 
 
@@ -265,11 +256,11 @@ def produce_kafka_message(topic_name, kafka_producer, message):
         kafka_producer.produce(topic_name, value=message, callback=delivery_callback)
         KAFKA_MESSAGE.inc()
     except BufferError:
-        safe_print_error(
+        logger.error(
             '%% Local producer queue is full (%d messages awaiting delivery): try again\n' % len(kafka_producer))
         return False
     # Wait until the message have been delivered
-    safe_print_error("Waiting for message to be delivered\n")
+    logger.error("Waiting for message to be delivered\n")
     kafka_producer.flush()
     return True
 
@@ -299,7 +290,7 @@ def find_pending_work():
             return Kafka_message_list
 
     except mysql.connector.Error as err:
-        safe_print_error("Exception raised! -> " + str(err) + "\n")
+        logger.error("Exception raised! -> " + str(err) + "\n")
         return False
 
 
@@ -318,10 +309,10 @@ def authenticate_and_retrieve_user_id(header):
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             REQUEST_TO_UM.inc()
             response = stub.RequestUserIdViaJWTToken(WMS_um_pb2.Request(jwt_token=jwt_token))
-            safe_print("Fetched user id: " + str(response.user_id) + "\n")
+            logger.info("Fetched user id: " + str(response.user_id) + "\n")
             user_id_to_return = response.user_id  # user id < 0 if some error occurred
     except grpc.RpcError as error:
-        safe_print_error("gRPC error! -> " + str(error) + "\n")
+        logger.error("gRPC error! -> " + str(error) + "\n")
         user_id_to_return = "null"
     return user_id_to_return
 
@@ -369,7 +360,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                safe_print("DELETE USER CONSTRAINTS BY LOCATION \n\n Data received: " + str(data_dict))
+                logger.info("DELETE USER CONSTRAINTS BY LOCATION \n\n Data received: " + str(data_dict))
                 if data_dict:
                     timestamp_client = data_dict.get("timestamp_client")
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
@@ -406,7 +397,7 @@ def create_app():
                     rounded_longitude = round(longitude, 3)
                     country_code = data_dict.get('location')[3]
                     state_code = data_dict.get('location')[4]
-                    safe_print_error(
+                    logger.info(
                         "LOCATION  " + location_name + '  ' + str(rounded_latitude) + '  ' + str(rounded_longitude) + '  ' + str(
                             country_code) + '  ' + str(state_code) + "\n\n")
                     try:
@@ -426,7 +417,7 @@ def create_app():
                             DBend_time = time.time_ns()
                             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not row:
-                                safe_print_error("There is no entry with that latitude and longitude\n")
+                                logger.error("There is no entry with that latitude and longitude\n")
                                 FAILURE.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Error, there is no locations to delete with that parameters", 400
@@ -442,11 +433,11 @@ def create_app():
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return "Row in user_constraints correctly deleted", 200
                     except mysql.connector.Error as err:
-                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            safe_print_error(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -468,7 +459,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                safe_print("Data received:" + str(data_dict))
+                logger.info("Data received:" + str(data_dict))
                 if data_dict:
                     timestamp_client = data_dict.get("timestamp_client")
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
@@ -506,7 +497,7 @@ def create_app():
                     rounded_longitude = round(longitude, 3)
                     country_code = data_dict.get('location')[3]
                     state_code = data_dict.get('location')[4]
-                    safe_print_error(
+                    logger.info(
                         "LOCATION  " + location_name + '  ' + str(rounded_latitude) + '  ' + str(rounded_longitude) + '  ' + str(
                             country_code) + '  ' + str(state_code) + "\n\n")
                     del data_dict['trigger_period']
@@ -528,7 +519,7 @@ def create_app():
                             DBend_time = time.time_ns()
                             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                             if not row:
-                                safe_print_error("There is no entry with that latitude and longitude\n")
+                                logger.error("There is no entry with that latitude and longitude\n")
                                 DBstart_time = time.time_ns()
                                 mycursor.execute(
                                     "INSERT INTO locations (location_name, latitude, longitude, country_code, state_code) VALUES (%s, %s, %s, %s, %s)",
@@ -538,7 +529,7 @@ def create_app():
                                 DBend_time = time.time_ns()
                                 QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                                 location_id = mycursor.lastrowid
-                                safe_print("New location correctly inserted!\n")
+                                logger.info("New location correctly inserted!\n")
                             else:
                                 location_id = row[0]  # location id = first element of first
                             DBstart_time = time.time_ns()
@@ -577,11 +568,11 @@ def create_app():
                                 return "New user_constraints correctly inserted!", 200
 
                     except mysql.connector.Error as err:
-                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            safe_print_error(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -603,7 +594,7 @@ def create_app():
             try:
                 # Extract json data
                 data_dict = request.get_json()
-                safe_print("Data received:" + str(data_dict))
+                logger.info("Data received:" + str(data_dict))
                 if data_dict:
                     timestamp_client = data_dict.get("timestamp_client")
                     # Communication with UserManager in order to authenticate the user and retrieve user_id
@@ -651,7 +642,7 @@ def create_app():
                             if not rows:
                                 FAILURE.inc()
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
-                                return "There is no rules that you have indicated! PLease insert location, rules and trigger period!", 400
+                                return "There is no rules that you have indicated! Please insert location, rules and trigger period!", 400
                             else:
                                 rules_list = list()  # list of (location_info, rules, trigger_period key-value pairs)
                                 for row in rows:
@@ -681,11 +672,11 @@ def create_app():
                                 return f"YOUR RULES: <br><br> {rules_returned}", 200
 
                     except mysql.connector.Error as err:
-                        safe_print_error("Exception raised! -> " + str(err) + "\n")
+                        logger.error("Exception raised! -> " + str(err) + "\n")
                         try:
                             mydb.rollback()
                         except Exception as exe:
-                            safe_print_error(f"Exception raised in rollback: {exe}\n")
+                            logger.error(f"Exception raised in rollback: {exe}\n")
                         FAILURE.inc()
                         INTERNAL_ERROR.inc()
                         DELTA_TIME.set(time.time_ns() - timestamp_client)
@@ -713,7 +704,7 @@ app = create_app()
 def serve_apigateway():
     port = 50051
     hostname = socket.gethostname()
-    safe_print(f'Hostname: {hostname} -> server starting on port {str(port)}')
+    logger.info(f'Hostname: {hostname} -> server starting on port {str(port)}')
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 
@@ -723,7 +714,7 @@ def serve_um():
     WMS_um_pb2_grpc.add_WMSUmServicer_to_server(WMSUm(), server)
     server.add_insecure_port('[::]:' + port)
     server.start()
-    safe_print("UM thread server started, listening on " + port + "\n")
+    logger.info("UM thread server started, listening on " + port + "\n")
     server.wait_for_termination()
 
 
@@ -735,7 +726,7 @@ if __name__ == "__main__":
         secret_password_value = file.read()
     os.environ['PASSWORD'] = secret_password_value
 
-    print("ENV variables initialization done")
+    logger.info("ENV variables initialization done")
 
     # create tables location and user_constraints if not exists.
     try:
@@ -773,10 +764,10 @@ if __name__ == "__main__":
     # Create topic "event_update" if not exists
     list_topics_metadata = kadmin.list_topics()
     topics = list_topics_metadata.topics  # Returns a dict()
-    print(f"LIST_TOPICS: {list_topics_metadata}")
-    print(f"TOPICS: {topics}")
+    logger.info(f"LIST_TOPICS: {list_topics_metadata}")
+    logger.info(f"TOPICS: {topics}")
     topic_names = set(topics.keys())
-    print(f"TOPIC_NAMES: {topic_names}")
+    logger.info(f"TOPIC_NAMES: {topic_names}")
     found = False
     for name in topic_names:
         if name == topic:
@@ -800,15 +791,15 @@ if __name__ == "__main__":
     # Event object for thread communication
     expired_timer_event = threading.Event()
 
-    safe_print("Starting timer thread!\n")
+    logger.info("Starting timer thread!\n")
     threadTimer = threading.Thread(target=timer, args=(60, expired_timer_event))
     threadTimer.daemon = True
     threadTimer.start()
-    safe_print("Starting API Gateway serving thread!\n")
+    logger.info("Starting API Gateway serving thread!\n")
     threadAPIGateway = threading.Thread(target=serve_apigateway)
     threadAPIGateway.daemon = True
     threadAPIGateway.start()
-    safe_print("Starting user manager serving thread!\n")
+    logger.info("Starting user manager serving thread!\n")
     threadUM = threading.Thread(target=serve_um)
     threadUM.daemon = True
     threadUM.start()
