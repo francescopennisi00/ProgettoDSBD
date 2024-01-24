@@ -7,17 +7,13 @@ from flask import Flask
 from flask import request
 import hashlib
 import datetime
-from prometheus_client import Counter, generate_latest, REGISTRY, Gauge, Histogram
-from prometheus_api_client import PrometheusConnect, MetricsList, MetricSnapshotDataFrame, MetricRangeDataFrame
-from datetime import timedelta
+from prometheus_api_client import PrometheusConnect, MetricRangeDataFrame
 from prometheus_api_client.utils import parse_datetime
 import logging
-from statsmodels.tsa.holtwinters import SimpleExpSmoothing, ExponentialSmoothing
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import matplotlib.pyplot as plt
 from io import BytesIO
-import warnings
-#from statsmodels.tools.sm_exceptions import ConvergenceWarning
-#warnings.simplefilter('ignore', ConvergenceWarning)
+
 
 def calculate_hash(input_string):
     sha256_hash = hashlib.sha256()
@@ -143,10 +139,9 @@ def metrics_forecasting(metric, minutes):
     max_target_value = metric[3]
     seasonality_period = metric[4]
     violation_count = 0
+    status_string_to_be_returned = ""
     start_time = parse_datetime("1h")  # it should be raised with the system active for longer
     end_time = parse_datetime("now")
-    status_string_to_be_returned = ""
-    metric_string = ""
     metric_data = prom.get_metric_range_data(
         metric_name=metric_name,
         start_time=start_time,
@@ -185,21 +180,18 @@ def metrics_forecasting(metric, minutes):
     prediction = tsmodel.forecast(steps)
     logger.info("PREDICTION\n " + str(prediction))
     logger.info("\nTYPE PREDICTION\n " + str(type(prediction)))
-    # TODO: replace next steps with estimation of probability of violation
     try:
         for element in prediction:
             logger.info("\nELEMENT OF PREDICTION " + str(element))
             actual_value = float(element)
-            print(f"Metric {metric_name} -> actual value: {actual_value}\n")
+            logger.info(f"Metric {metric_name} -> actual value: {actual_value}\n")
             if actual_value < min_target_value or actual_value > max_target_value:
                 violation_count = violation_count + 1
-        if violation_count > 0:
-            metric_string = f"Metric name: {metric_name} Violations number:{violation_count} <br>"
+        status_string_to_be_returned = f"Metric name: {metric_name} Probability of violations in the next {minutes} minutes: {str(100*violation_count/steps)}%"
     except ValueError:
         print("Metric actual value is not a decimal number!")
         return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
-    status_string_to_be_returned = status_string_to_be_returned + metric_string
-    return train_data, test_data, prediction
+    return train_data, test_data, prediction, status_string_to_be_returned
 
 
 def create_app():
@@ -295,7 +287,7 @@ def create_app():
                                 else:
                                     mycursor.execute(
                                         "UPDATE metrics SET min_target_value = %s, max_target_value = %s, seasonality_period=%s WHERE metric_name = %s",
-                                        (min, max, metric, seasonality_period))
+                                        (min, max, seasonality_period, metric))
                                     print("Updating metric table!\n")
                             mydb.commit()
                             return "Metric table updated correctly!", 200
@@ -489,14 +481,14 @@ def create_app():
                     if result == "parameter_error":
                         return f"Parameter error: minutes must be an integer ", 400
                     else:
-                        # TODO: replace next code with return string that indicates probability of violation (= result)
                         train_data = result[0]
                         test_data = result[1]
                         prediction = result[2]
+                        probability = result[3]
                         plt.figure(figsize=(24, 10))
                         plt.ylabel('Values', fontsize=14)
                         plt.xlabel('Time', fontsize=14)
-                        plt.title('Values over time', fontsize=16)
+                        plt.title(probability, fontsize=16)
                         plt.plot(train_data, "-", label='train')
                         plt.plot(test_data, "-", label='real')
                         plt.plot(prediction, "--", label='pred')

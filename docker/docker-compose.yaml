@@ -284,8 +284,8 @@ services:
       context: ../SLA_manager_service
       dockerfile: Dockerfile
     image: sla_manager_service_image:base
-    ports:
-      - "50000:50055"
+    expose:
+      - "50055"
     depends_on:
       - SLA_mysqlDB
     secrets:
