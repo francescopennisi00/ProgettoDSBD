@@ -53,17 +53,24 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                     temp_dictionary["user_id"] = row[1]
                     temp_dictionary["location_id"] = row[2]
                     temp_dictionary["rules"] = row[3]
-                    temp_dictionary["timestamp"] = row[4]
+                    temp_dictionary["timestamp"] = str(row[4])
                     temp_dictionary["trigger_period"] = row[5]
                     dictionary[index] = temp_dictionary
                     index = index + 1
                 cursor.execute("DELETE FROM user_constraints WHERE user_id= %s", (user_id,))
-                db.commit()
                 DBend_time = time.time_ns()
                 QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
                 json_to_return = json.dumps(dictionary)
+                db.commit()
                 return WMS_um_pb2.JsonEliminatedData(json_eliminated_data=json_to_return)
         except mysql.connector.Error as error:
+            logger.error("Exception raised! -> {0}".format(str(error)))
+            try:
+                mydb.rollback()
+            except Exception as exe:
+                logger.error(f"Exception raised in rollback: {exe}\n")
+            return WMS_um_pb2.JsonEliminatedData(json_eliminated_data="error")
+        except Exception as error:
             logger.error("Exception raised! -> {0}".format(str(error)))
             try:
                 mydb.rollback()
