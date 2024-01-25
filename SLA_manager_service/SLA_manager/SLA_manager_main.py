@@ -14,7 +14,6 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import matplotlib.pyplot as plt
 from io import BytesIO
 
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -74,6 +73,9 @@ def verify_metrics_current_violation_status(
 
         queryResult = prom.get_current_metric_value(metric_name=metric_name)
         logger.info(str(queryResult))
+        if not queryResult:
+            status_string_to_be_returned = status_string_to_be_returned + f"Metric {metric_name} has not produced any results, check if the metric_name is correct otherwise delete the wrong metric and create a new one <br><br>"
+            continue
         actual_string_value = queryResult[0].get("value")[1]
         try:
             actual_value = float(actual_string_value)
@@ -97,7 +99,7 @@ def violation_counter(list_of_metrics, hours):
     prom = PrometheusConnect(url=URL, disable_ssl=True)
 
     status_string_to_be_returned = f"VIOLATIONS IN THE LAST {hours} HOURS <br><br>"
-
+    metric_string = ""
     for metric in list_of_metrics:
         metric_string = ""
         violation_count = 0
@@ -114,6 +116,9 @@ def violation_counter(list_of_metrics, hours):
             end_time=end_time,
         )
         logger.info("\nMETRIC\n " + str(metric_data))
+        if not metric_data:
+            status_string_to_be_returned = status_string_to_be_returned + f"Metric {metric_name} has not produced any results, check if the metric_name is correct otherwise delete the wrong metric and create a new one <br><br>"
+            continue
         try:
             for element in metric_data[0].get('values'):
                 actual_string_value = element[1]
@@ -127,6 +132,9 @@ def violation_counter(list_of_metrics, hours):
             logger.error("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
         status_string_to_be_returned = status_string_to_be_returned + metric_string
+    if metric_string == "":
+        #  no violations in the specified hours
+        status_string_to_be_returned = status_string_to_be_returned + "There are no violations in your metrics "
     return status_string_to_be_returned
 
 
@@ -147,6 +155,9 @@ def metrics_forecasting(metric, minutes):
         start_time=start_time,
         end_time=end_time,
     )
+    if not metric_data:
+        status_string_to_be_returned = status_string_to_be_returned + f"Metric {metric_name} has not produced any results, check if the metric_name is correct otherwise delete the wrong metric and create a new one <br><br>"
+        return "error", status_string_to_be_returned
     metric_df = MetricRangeDataFrame(metric_data)
     logger.info("METRIC_DF\n" + str(metric_df))
     value_list = metric_df['value']
@@ -159,9 +170,9 @@ def metrics_forecasting(metric, minutes):
     logger.info("\nTSR INTERPOLATE NUMBER OF NON VALUE: " + str(tsr.isna().sum()))
     logger.info("\nTSR\n " + str(tsr))
     logger.info("\nTSR_INDEX\n " + str(tsr.index))
-    # Split training and test data (80/20%)
+    # Split training and test data (90/10%)
     len_dataframe = len(metric_df)
-    end = 0.8 * len_dataframe
+    end = 0.9 * len_dataframe
     end_index = round(end)
     train_data = tsr.iloc[:end_index]
     logger.info("TRAIN DATA NUMBER OF NON VALUE: " + str(train_data.isna().sum()))
@@ -171,12 +182,14 @@ def metrics_forecasting(metric, minutes):
     if seasonality_period == 0 or seasonality_period == 1:
         tsmodel = ExponentialSmoothing(train_data, trend='add').fit()
     else:
-        tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add", seasonal_periods=seasonality_period).fit()
+        tsmodel = ExponentialSmoothing(train_data, trend='add', seasonal="add",
+                                       seasonal_periods=seasonality_period).fit()
     try:
         minutes_int = int(minutes)  # required because minutes GET parameter is a string
     except ValueError:
         return "parameter_error"
-    steps = minutes_int*2  # each step takes 30 seconds, 2 step each minute
+    logger.info("\n TEST DATA LENGTH " + str(len(test_data)))
+    steps = minutes_int * 2 + len(test_data)  # each step takes 30 seconds, 2 step each minute
     prediction = tsmodel.forecast(steps)
     logger.info("\nPREDICTION\n " + str(prediction))
     logger.info("\nTYPE PREDICTION: " + str(type(prediction)))
@@ -187,11 +200,11 @@ def metrics_forecasting(metric, minutes):
             logger.info(f"Metric {metric_name} -> actual value: {actual_value}\n")
             if actual_value < min_target_value or actual_value > max_target_value:
                 violation_count = violation_count + 1
-        status_string_to_be_returned = f"Metric name: {metric_name} Probability of violations in the next {minutes} minutes: {str(100*violation_count/steps)}%"
+        status_string_to_be_returned = f"Metric name: {metric_name} Probability of violations in the next {minutes} minutes: {str(100 * violation_count / steps)}%"
     except ValueError:
         logger.error("Metric actual value is not a decimal number!")
         return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
-    return train_data, test_data, prediction, status_string_to_be_returned
+    return "ok", train_data, test_data, prediction, status_string_to_be_returned
 
 
 def create_app():
@@ -480,11 +493,13 @@ def create_app():
                     result = metrics_forecasting(row, minutes)
                     if result == "parameter_error":
                         return f"Parameter error: minutes must be an integer ", 400
-                    else:
-                        train_data = result[0]
-                        test_data = result[1]
-                        prediction = result[2]
-                        probability = result[3]
+                    elif result[0] == "error":
+                        return result[1], 200
+                    else:  # result[0] is an "ok" string
+                        train_data = result[1]
+                        test_data = result[2]
+                        prediction = result[3]
+                        probability = result[4]
                         plt.figure(figsize=(24, 10))
                         plt.ylabel('Values', fontsize=14)
                         plt.xlabel('Time', fontsize=14)
@@ -497,7 +512,7 @@ def create_app():
                         plt.savefig(buffer, format='png')
                         buffer.seek(0)
                         plt.close()
-                        return app.response_class(buffer.getvalue(), mimetype='image/png'),200
+                        return app.response_class(buffer.getvalue(), mimetype='image/png'), 200
 
         except mysql.connector.Error as err:
             logger.error("Exception raised! -> " + str(err) + "\n")
@@ -546,7 +561,7 @@ if __name__ == '__main__':
             result = mycursor.fetchall()
             if not result:
                 psw = calculate_hash(os.environ.get("ADMIN_PASSWORD"))
-                mycursor.execute("INSERT INTO admins(email, password) VALUES(%s,%s)",(os.environ.get("EMAIL"), psw))
+                mycursor.execute("INSERT INTO admins(email, password) VALUES(%s,%s)", (os.environ.get("EMAIL"), psw))
                 mydb.commit()
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
