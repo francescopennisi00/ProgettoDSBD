@@ -99,7 +99,7 @@ def violation_counter(list_of_metrics, hours):
     prom = PrometheusConnect(url=URL, disable_ssl=True)
 
     status_string_to_be_returned = f"VIOLATIONS IN THE LAST {hours} HOURS <br><br>"
-    metric_string = ""
+    found = 0
     for metric in list_of_metrics:
         metric_string = ""
         violation_count = 0
@@ -117,7 +117,7 @@ def violation_counter(list_of_metrics, hours):
         )
         logger.info("\nMETRIC\n " + str(metric_data))
         if not metric_data:
-            status_string_to_be_returned = status_string_to_be_returned + f"Metric {metric_name} has not produced any results, check if the metric_name is correct otherwise delete the wrong metric and create a new one <br><br>"
+            status_string_to_be_returned = status_string_to_be_returned + f"Metric {metric_name} has not produced any results, check if the metric_name is correct otherwise delete the wrong metric and create a new one <br>"
             continue
         try:
             for element in metric_data[0].get('values'):
@@ -127,12 +127,13 @@ def violation_counter(list_of_metrics, hours):
                 if actual_value < min_target_value or actual_value > max_target_value:
                     violation_count = violation_count + 1
             if violation_count > 0:
-                metric_string = f"Metric name: {metric_name} Violations number:{violation_count} <br>"
+                found = 1
+                metric_string = f"Metric name: {metric_name} Violations number: {violation_count} <br>"
         except ValueError:
             logger.error("Metric actual value is not a decimal number!")
             return "ERROR! THERE IS A METRIC WHOSE VALUES IS NOT A DECIMAL NUMBER!"
         status_string_to_be_returned = status_string_to_be_returned + metric_string
-    if metric_string == "":
+    if found == 0:
         #  no violations in the specified hours
         status_string_to_be_returned = status_string_to_be_returned + "There are no violations in your metrics "
     return status_string_to_be_returned
