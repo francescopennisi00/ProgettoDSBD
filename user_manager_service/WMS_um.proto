@@ -4,15 +4,16 @@ package WMS_um;
 
 service WMSUm {
   rpc RequestUserIdViaJWTToken (Request) returns (Reply) {}
-  rpc RequestDeleteUser_Constraints (User) returns (Response_Code){}
+  rpc RequestDeleteUser_Constraints (User) returns (JsonEliminatedData) {}
+  rpc RestoreData (JsonEliminatedData) returns (ResponseCode) {}
 }
 
 message User{
   int64 user_id = 1;
 }
 
-message Response_Code{
-  int64 response_code = 1;
+message JsonEliminatedData{
+  string json_eliminated_data = 1;
 }
 
 message Request {
@@ -21,4 +22,8 @@ message Request {
 
 message Reply {
   int64 user_id = 1;
+}
+
+message ResponseCode {
+  int64 code = 1;
 }

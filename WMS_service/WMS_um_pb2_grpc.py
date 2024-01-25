@@ -22,7 +22,12 @@ class WMSUmStub(object):
         self.RequestDeleteUser_Constraints = channel.unary_unary(
                 '/WMS_um.WMSUm/RequestDeleteUser_Constraints',
                 request_serializer=WMS__um__pb2.User.SerializeToString,
-                response_deserializer=WMS__um__pb2.Response_Code.FromString,
+                response_deserializer=WMS__um__pb2.JsonEliminatedData.FromString,
+                )
+        self.RestoreData = channel.unary_unary(
+                '/WMS_um.WMSUm/RestoreData',
+                request_serializer=WMS__um__pb2.JsonEliminatedData.SerializeToString,
+                response_deserializer=WMS__um__pb2.ResponseCode.FromString,
                 )
 
 
@@ -41,6 +46,12 @@ class WMSUmServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RestoreData(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WMSUmServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -52,7 +63,12 @@ def add_WMSUmServicer_to_server(servicer, server):
             'RequestDeleteUser_Constraints': grpc.unary_unary_rpc_method_handler(
                     servicer.RequestDeleteUser_Constraints,
                     request_deserializer=WMS__um__pb2.User.FromString,
-                    response_serializer=WMS__um__pb2.Response_Code.SerializeToString,
+                    response_serializer=WMS__um__pb2.JsonEliminatedData.SerializeToString,
+            ),
+            'RestoreData': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreData,
+                    request_deserializer=WMS__um__pb2.JsonEliminatedData.FromString,
+                    response_serializer=WMS__um__pb2.ResponseCode.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -94,6 +110,23 @@ class WMSUm(object):
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/WMS_um.WMSUm/RequestDeleteUser_Constraints',
             WMS__um__pb2.User.SerializeToString,
-            WMS__um__pb2.Response_Code.FromString,
+            WMS__um__pb2.JsonEliminatedData.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def RestoreData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/WMS_um.WMSUm/RestoreData',
+            WMS__um__pb2.JsonEliminatedData.SerializeToString,
+            WMS__um__pb2.ResponseCode.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

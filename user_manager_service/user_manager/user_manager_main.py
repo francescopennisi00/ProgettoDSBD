@@ -128,16 +128,75 @@ def calculate_hash(input_string):
     return hash_result
 
 
+def check_pending_metrics_to_restore(dbcursor):
+    try:
+        DBstart_time = time.time_ns()
+        # check if are present metrics to restore into DB
+        dbcursor.execute("SELECT metrics FROM metrics_to_restore")
+        rows = dbcursor.fetchall()
+        DBend_time = time.time_ns()
+        QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+        for row in rows:
+            json_data = row[0]
+            try:
+                with grpc.insecure_channel('wms-service:50052') as channel:
+                    stub = WMS_um_pb2_grpc.WMSUmStub(channel)
+                    response = stub.RestoreData(WMS_um_pb2.JsonEliminatedData(json_eliminated_data=json_data))
+                    if response.code != -1:
+                        return True
+                    else:
+                        return False
+            except grpc.RpcError as error:
+                logger.error("gRPC error! -> " + str(error) + "\n")
+                return False
+        return True  # if no metric is pending, return True because no action has to be done
+
+    except mysql.connector.Error as err:
+        logger.error("Exception raised! -> " + str(err) + "\n")
+        try:
+            mydb.rollback()
+        except Exception as exe:
+            logger.error(f"Exception raised in rollback: {exe}\n")
+        return False
+
+
+# implementing compensate function in order to re-insert into WMS DB the metric of user that has not been eliminated
+# in delete_account Flask route handler, respecting SAGA pattern for distributed transaction
+def compensate_user_constraints_elimination(json_to_restore):
+    try:
+        DBstart_time = time.time_ns()
+        with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                     user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                     database=os.environ.get('DATABASE')) as mydb:
+            mycursor = mydb.cursor()
+
+            # insert into DB metric to restore in order to prevent data loss caused by possible crashes
+            mycursor.execute("INSERT INTO metrics_to_restore (metrics) VALUES (%s)", (json_to_restore,))
+            mydb.commit()
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+            while check_pending_metrics_to_restore(mycursor) == False:
+                pass
+            return True
+    except mysql.connector.Error as err:
+        logger.error("Exception raised! -> " + str(err) + "\n")
+        try:
+            mydb.rollback()
+        except Exception as exe:
+            logger.error(f"Exception raised in rollback: {exe}\n")
+        return False
+
+
 def delete_UserConstraints_By_UserID(userId):
     try:
         with grpc.insecure_channel('wms-service:50052') as channel:
             stub = WMS_um_pb2_grpc.WMSUmStub(channel)
             response = stub.RequestDeleteUser_Constraints(WMS_um_pb2.User(user_id=userId))
-            code_to_return = response.response_code  # user id < 0 if some error occurred
+            json_to_return = response.json_eliminated_data  # json_to_return = "error" if some error occurred
     except grpc.RpcError as error:
         logger.error("gRPC error! -> " + str(error) + "\n")
-        code_to_return = -1
-    return code_to_return
+        json_to_return = "error"
+    return json_to_return
 
 
 def create_app():
@@ -290,13 +349,24 @@ def create_app():
                                 DELTA_TIME.set(time.time_ns() - timestamp_client)
                                 return f"Email or password wrong! Retry!", 401
                             else:
-                                if delete_UserConstraints_By_UserID(email_row[0]) != -1:
-                                    DBstart_time = time.time_ns()
-                                    mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
-                                                     (email, hash_psw))
-                                    mydb.commit()
-                                    DBend_time = time.time_ns()
-                                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+                                result = delete_UserConstraints_By_UserID(email_row[0])
+                                if result != "error":
+                                    try:
+                                        DBstart_time = time.time_ns()
+                                        mycursor.execute("DELETE FROM users WHERE email=%s and password=%s",
+                                                         (email, hash_psw))
+                                        mydb.commit()
+                                        DBend_time = time.time_ns()
+                                        QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+                                    except mysql.connector.Error as exception:
+                                        logger.error("Exception raised! -> " + str(exception) + "\n")
+                                        try:
+                                            mydb.rollback()
+                                        except Exception as exe:
+                                            logger.error(f"Exception raised in rollback: {exe}\n")
+                                        # implementing pattern SAGA for distributed transaction
+                                        while compensate_user_constraints_elimination(result) != True:
+                                            pass
                                     REGISTERED_USERS_COUNT.dec()
                                     DELTA_TIME.set(time.time_ns() - timestamp_client)
                                     return "ACCOUNT DELETED WITH RELATIVE USER_CONSTRAINTS!", 200
@@ -364,6 +434,14 @@ if __name__ == '__main__':
             mydb.commit()  # to make changes effective
             DBend_time = time.time_ns()
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+            DBstart_time = time.time_ns()
+            mycursor.execute(
+                "CREATE TABLE IF NOT EXISTS metrics_to_restore (id INTEGER PRIMARY KEY AUTO_INCREMENT, metrics JSON NOT NULL)")
+            mydb.commit()
+            DBend_time = time.time_ns()
+            QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+            while check_pending_metrics_to_restore(mycursor) == False:
+                pass
     except mysql.connector.Error as err:
         sys.stderr.write("Exception raised! -> " + str(err) + "\n")
         try:

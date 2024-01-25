@@ -44,18 +44,64 @@ class WMSUm(WMS_um_pb2_grpc.WMSUmServicer):
                                          user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
                                          database=os.environ.get('DATABASE')) as db:
                 cursor = db.cursor()
+                cursor.execute("SELECT * FROM user_constraints WHERE user_id=%s", (user_id,))
+                rows = cursor.fetchall()
+                dictionary = dict()
+                index = 0
+                for row in rows:
+                    temp_dictionary = dict()
+                    temp_dictionary["user_id"] = row[1]
+                    temp_dictionary["location_id"] = row[2]
+                    temp_dictionary["rules"] = row[3]
+                    temp_dictionary["timestamp"] = row[4]
+                    temp_dictionary["trigger_period"] = row[5]
+                    dictionary[index] = temp_dictionary
+                    index = index + 1
                 cursor.execute("DELETE FROM user_constraints WHERE user_id= %s", (user_id,))
                 db.commit()
                 DBend_time = time.time_ns()
                 QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
-                return WMS_um_pb2.Response_Code(response_code=200)
+                json_to_return = json.dumps(dictionary)
+                return WMS_um_pb2.JsonEliminatedData(json_eliminated_data=json_to_return)
         except mysql.connector.Error as error:
             logger.error("Exception raised! -> {0}".format(str(error)))
             try:
                 mydb.rollback()
             except Exception as exe:
                 logger.error(f"Exception raised in rollback: {exe}\n")
-            return WMS_um_pb2.Response_Code(response_code=-1)
+            return WMS_um_pb2.JsonEliminatedData(json_eliminated_data="error")
+
+    def RestoreData(self, request, context):
+        json_to_restore = request.json_eliminated_data
+        json_to_restore = json.loads(json_to_restore)
+        key_set = json_to_restore.keys()
+        try:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                         user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                         database=os.environ.get('DATABASE')) as db:
+                cursor = db.cursor()
+                for key in key_set:
+                    json_metric = json_to_restore.get(key)
+                    userId = json_metric.get("user_id")
+                    locationId = json_metric.get("location_id")
+                    rules = json_metric.get("rules")
+                    timestamp = json_metric.get("timestamp")
+                    trigger_period = json_metric.get("trigger_period")
+                    DBstart_time = time.time_ns()
+                    cursor.execute("INSERT INTO user_constraints (user_id, location_id, rules, time_stamp, trigger_period) VALUES(%s, %s, %s, %s, %s)",
+                                (str(userId), str(locationId), rules, str(timestamp), str(trigger_period)))
+                    DBend_time = time.time_ns()
+                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+                db.commit()
+                return WMS_um_pb2.ResponseCode(code=1)
+
+        except mysql.connector.Error as error:
+            logger.error("Exception raised! -> {0}".format(str(error)))
+            try:
+                mydb.rollback()
+            except Exception as exe:
+                logger.error(f"Exception raised in rollback: {exe}\n")
+            return WMS_um_pb2.ResponseCode(code=-1)
 
 
 def make_kafka_message(final_json_dict, location_id, mycursor):
