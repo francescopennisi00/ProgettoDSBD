@@ -22,3 +22,6 @@ nodes:
   - role: worker
     labels:
       custom-label: "worker"
+    extraPortMappings:
+      - containerPort: 30000
+        hostPort: 9090
