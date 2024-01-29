@@ -59,7 +59,7 @@ def update_event_sent(event_id):
         DBstart_time = time.time_ns()
         with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),user=os.environ.get('USER'), password=os.environ.get('PASSWORD'), database=os.environ.get('DATABASE')) as db:
             cursor = db.cursor()
-            cursor.execute("UPDATE events SET sent=TRUE WHERE id = %s", (str(event_id),))
+            cursor.execute("UPDATE events SET sent=TRUE, time_stamp=CURRENT_TIMESTAMP WHERE id = %s", (str(event_id),))
             db.commit()
             DBend_time = time.time_ns()
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
