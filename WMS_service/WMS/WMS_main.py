@@ -353,23 +353,17 @@ def find_pending_work():
             mycursor = mydb.cursor(buffered=True)
 
             # retrieve all the information about locations to build Kafka messages
-            try:
-                mydb.start_transaction()
 
+            mydb.start_transaction()
+
+            mycursor.execute(
+                "SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=FALSE GROUP BY location_id")
+            location_id_list = mycursor.fetchall()
+
+            if location_id_list:
                 mycursor.execute(
-                    "SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=FALSE GROUP BY location_id")
-                location_id_list = mycursor.fetchall()
-
-                if location_id_list:
-                    mycursor.execute(
-                        "UPDATE user_constraints SET checked=TRUE WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=FALSE")
-                    mydb.commit()
-            except Exception as e:
-                logger.error(f"An error occurred:{e}")
-                try:
-                    mydb.rollback()
-                except Exception as exe:
-                    logger.error(f"Exception raised in rollback: {exe}\n")
+                    "UPDATE user_constraints SET checked=TRUE WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=FALSE")
+            mydb.commit()
 
             DBend_time = time.time_ns()
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
@@ -383,6 +377,10 @@ def find_pending_work():
 
     except mysql.connector.Error as err:
         logger.error("Exception raised! -> " + str(err) + "\n")
+        try:
+            mydb.rollback()
+        except Exception as exe:
+            logger.error(f"Exception raised in rollback: {exe}\n")
         return False
 
 
