@@ -326,7 +326,7 @@ if __name__ == "__main__":
         if name == topic:
             found = True
     if found == False:
-        new_topic = NewTopic(topic, 1, 1)  # Number-of-partitions = 1, Number-of-replicas = 1
+        new_topic = NewTopic(topic, 6, 1)  # Number-of-partitions = 1, Number-of-replicas = 1
         kadmin.create_topics([new_topic,])
 
     # Create Producer instance
