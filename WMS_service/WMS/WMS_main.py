@@ -135,7 +135,7 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
     rows_id_list = list()
     DBstart_time = time.time_ns()
     mycursor.execute(
-        "SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND location_id = %s",
+        "SELECT * FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=TRUE AND location_id = %s",
         (str(location_id),))
     results = mycursor.fetchall()
     DBend_time = time.time_ns()
@@ -273,7 +273,31 @@ def make_kafka_message(final_json_dict, location_id, mycursor):
 def delivery_callback(err, msg):
     if err:
         logger.error('%% Message failed delivery: %s\n' % err)
+        message_dict = json.loads(msg.value())
+        logger.info(message_dict)
+        rows_id_list = message_dict.get("rows_id")
+        try:
+            with mysql.connector.connect(host=os.environ.get('HOSTNAME'), port=os.environ.get('PORT'),
+                                         user=os.environ.get('USER'), password=os.environ.get('PASSWORD'),
+                                         database=os.environ.get('DATABASE')) as mydb:
+                mycursor = mydb.cursor()
+                for id in rows_id_list:
+                    logger.info("ID in ROWS_ID_LIST  " + str(id))
+                    DBstart_time = time.time_ns()
+                    mycursor.execute("UPDATE user_constraints SET checked=FALSE WHERE id = %s",
+                                     (str(id),))
+                    DBend_time = time.time_ns()
+                    QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
+                mydb.commit()  # to make changes effective
+        except mysql.connector.Error as err:
+            logger.error("Exception raised!\n" + str(err))
+            try:
+                mydb.rollback()
+            except Exception as exe:
+                logger.error(f"Exception raised in rollback: {exe}\n")
+            raise SystemExit
         raise SystemExit("Exiting after error in delivery message to Kafka broker\n")
+
     else:
         KAFKA_MESSAGE_DELIVERED.inc()
         logger.error('%% Message delivered to %s, partition[%d] @ %d\n' %
@@ -289,7 +313,7 @@ def delivery_callback(err, msg):
                 for id in rows_id_list:
                     logger.info("ID in ROWS_ID_LIST  " + str(id))
                     DBstart_time = time.time_ns()
-                    mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP() WHERE id = %s",
+                    mycursor.execute("UPDATE user_constraints SET time_stamp = CURRENT_TIMESTAMP(), checked=FALSE WHERE id = %s",
                                      (str(id),))
                     DBend_time = time.time_ns()
                     QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
@@ -329,9 +353,24 @@ def find_pending_work():
             mycursor = mydb.cursor(buffered=True)
 
             # retrieve all the information about locations to build Kafka messages
-            mycursor.execute(
-                "SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period GROUP BY location_id")
-            location_id_list = mycursor.fetchall()
+            try:
+                mydb.start_transaction()
+
+                mycursor.execute(
+                    "SELECT location_id FROM user_constraints WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=FALSE GROUP BY location_id")
+                location_id_list = mycursor.fetchall()
+
+                if location_id_list:
+                    mycursor.execute(
+                        "UPDATE user_constraints SET checked=TRUE WHERE TIMESTAMPDIFF(SECOND,  time_stamp, CURRENT_TIMESTAMP()) > trigger_period AND checked=FALSE")
+                    mydb.commit()
+            except Exception as e:
+                logger.error(f"An error occurred:{e}")
+                try:
+                    mydb.rollback()
+                except Exception as exe:
+                    logger.error(f"Exception raised in rollback: {exe}\n")
+
             DBend_time = time.time_ns()
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
             Kafka_message_list = list()
@@ -794,7 +833,7 @@ if __name__ == "__main__":
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
             DBstart_time = time.time_ns()
             mycursor.execute(
-                "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, FOREIGN KEY (location_id) REFERENCES locations(id), UNIQUE KEY user_location_id (user_id, location_id));")
+                "CREATE TABLE IF NOT EXISTS user_constraints (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, location_id INTEGER NOT NULL, rules JSON NOT NULL, time_stamp TIMESTAMP NOT NULL, trigger_period INTEGER NOT NULL, checked BOOLEAN NOT NULL DEFAULT FALSE, FOREIGN KEY (location_id) REFERENCES locations(id), UNIQUE KEY user_location_id (user_id, location_id));")
             mydb.commit()  # to make changes effective
             DBend_time = time.time_ns()
             QUERY_DURATIONS_HISTOGRAM.observe(DBend_time-DBstart_time)
