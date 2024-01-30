@@ -1,5 +1,5 @@
 # DSBD Project
-Project of Distributed Systems and Big Data 2024
+Distributed Systems and Big Data Project 2024
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -24,7 +24,6 @@ For more details we recommend to read documentation. [Documentation.](https://gi
 
 ### Prerequisites
 
-- Python 3.10 or higher
 - Docker
 - Kubernetes cluster
 - Kind
@@ -46,7 +45,7 @@ For more details we recommend to read documentation. [Documentation.](https://gi
   - wms_DB_root_psw.txt
   - worker_DB_root_psw.txt <br> <br>
 
-  The lasts five must contain the password of root user to the databases. <br>
+  The last five must contain the password of root user to the associated databases. <br>
   To get the weather forecast you need to use the services offered by OpenWeather,
   so we recommend that you register at this link (https://openweathermap.org/api) to free service option and get your
   API key, that you have to put it in the secret apikey.txt.<br>
@@ -107,10 +106,10 @@ For more details we recommend to read documentation. [Documentation.](https://gi
  
 We recommend to use POSTMAN as client in order to interact with the system by REST API. <br>
 For more information on the meaning and usefulness of endpoints we recommend to read documentation. [Documentation.](https://github.com/francescopennisi00/ProgettoDSBD/blob/main/docs/RelazioneDSBDGenovesePennisi2024.pdf)
-<br> If you want to use your application in Docker than you have to use base endpoint:
+<br> If you want to use your application in Docker then you have to use this base endpoint:
         
             http://weather.com:8080
-If you want to use your application in Kubernetes than you have to use base endpoint:
+If you want to use your application in Kubernetes then you have to use this base endpoint:
 
             http://weather.com
 
@@ -224,7 +223,7 @@ with Authorization as key and "Bearer your_JWT_token" as value.
 
 The endpoints explained refer to the case 
 where the application is running with Kubernetes.<br>
-If the application is running with Docker the endpoint change a little bit, in this way:
+If the application is running with Docker the endpoints change a little bit, in this way:
 - /usermanager/register
 - /usermanager/login
 - /usermanager/delete_account
