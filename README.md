@@ -36,6 +36,7 @@ For more details we recommend to read documentation. [Documentation.](https://gi
     #### How to create Secrets in Docker
     In order to run application on Docker, you need to create text files with your secrets and put them in /docker directory.
     You have to name them in this way:
+  - admin_psw.txt
   - apikey.txt
   - app_password.txt
   - email.txt 
